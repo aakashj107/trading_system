@@ -1,0 +1,44 @@
+name: Live Trading Scan
+
+on:
+  schedule:
+    # Every 15 min during market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
+    # IST = UTC+5:30, so 9:15 IST = 3:45 UTC, 15:30 IST = 10:00 UTC
+    - cron: '*/15 3-9 * * 1-5'   # UTC 3:45-9:45 (IST 9:15-15:15)
+    - cron: '0 10 * * 1-5'       # UTC 10:00 (IST 15:30 - daily summary)
+  workflow_dispatch:              # Manual trigger button
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run live scan
+        run: python live_runner.py --universe core --regime BULL
+        env:
+          ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
+          ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
+          ANGEL_PASSWORD: ${{ secrets.ANGEL_PASSWORD }}
+          ANGEL_TOTP_SECRET: ${{ secrets.ANGEL_TOTP_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Upload cycle logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cycle-logs-${{ github.run_number }}
+          path: daily_logs/live_cycles_*.jsonl
+          retention-days: 30
