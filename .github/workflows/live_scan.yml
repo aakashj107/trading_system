@@ -35,7 +35,32 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
-      - name: Upload cycle logs
+      - name: Trade summary
+        if: always()
+        run: |
+          echo ""
+          echo "============================================="
+          echo "  PAPER TRADING RESULTS"
+          echo "============================================="
+          LOG="daily_logs/live_cycles_$(date -u +%Y-%m-%d).jsonl"
+          if [ -f "$LOG" ]; then
+            python3 -c "
+          import json, sys
+          for line in open('$LOG'):
+              d = json.loads(line)
+              print(f'  Cycle #{d[\"cycle\"]} | {d[\"status\"]}')
+              print(f'  Scanned: {d[\"symbols_scanned\"]} stocks | Signals: {d[\"raw_signals\"]} | Consensus: {d[\"consensus_signals\"]}')
+              print(f'  Buys: {d[\"buy_orders\"]} | Sells: {d[\"sell_orders\"]}')
+              for e in d.get('executed', []):
+                  print(f'  >> {e[\"signal\"]} {e[\"symbol\"]} @ ₹{e[\"price\"]:,.2f} x {e[\"quantity\"]} ({e[\"strength\"]})')
+              print()
+          "
+          else
+            echo "  No cycles yet"
+          fi
+          echo "============================================="
+
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
