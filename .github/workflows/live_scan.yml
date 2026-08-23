@@ -1,12 +1,13 @@
-name: Live Trading Scan
+name: Paper Trading Scan
 
 on:
   schedule:
-    # Every 15 min during market hours (9:15 AM - 3:30 PM IST, Mon-Fri)
-    # IST = UTC+5:30, so 9:15 IST = 3:45 UTC, 15:30 IST = 10:00 UTC
-    - cron: '*/15 3-9 * * 1-5'   # UTC 3:45-9:45 (IST 9:15-15:15)
-    - cron: '0 10 * * 1-5'       # UTC 10:00 (IST 15:30 - daily summary)
-  workflow_dispatch:              # Manual trigger button
+    # Every 15 min during market hours (9:15 AM - 3:15 PM IST, Mon-Fri)
+    # IST = UTC+5:30, so 9:15 IST = 3:45 UTC, 15:15 IST = 9:45 UTC
+    - cron: '*/15 3-9 * * 1-5'
+    # Daily summary at 3:30 PM IST = 10:00 UTC
+    - cron: '0 10 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   scan:
@@ -25,7 +26,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run live scan
+      - name: Run paper trading scan
+        # paper_api mode: fetches live LTP, logs signals, NEVER places real orders
         run: python live_runner.py --universe core --regime BULL
         env:
           ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
