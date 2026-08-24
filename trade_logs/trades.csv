@@ -1,2 +1,0 @@
-date,scan_time,symbol,action,entry_date,entry_price,exit_date,exit_price,quantity,pnl,pnl_pct,charges,hold_days,exit_reason,strategy,regime,cycle
-2026-08-24,22:54:12,TATASTEEL.NS,BUY,2026-08-24,314.4,,0.0,318,0.0,0.0,0.0,0,,consensus,BULL,1

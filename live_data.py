@@ -143,13 +143,26 @@ class LiveDataBridge:
         print(f"[LIVE_DATA] Got historical data for {len(cache)}/{len(symbols)} symbols")
 
         # 2. Fetch live LTP and inject into latest bar
-        if inject_ltp:
+        # Only inject during market hours — outside hours, Yahoo data is more reliable
+        market_open = self.is_market_open()
+        if inject_ltp and market_open:
             live_prices = self.fetch_live_prices(list(cache.keys()))
             injected = 0
+            rejected = 0
             for sym, ltp in live_prices.items():
                 if sym in cache:
                     df = cache[sym]
                     last_idx = df.index[-1]
+                    yahoo_close = float(df.at[last_idx, "Close"])
+
+                    # Sanity check: LTP should be within 15% of Yahoo close
+                    if yahoo_close > 0:
+                        pct_diff = abs(ltp - yahoo_close) / yahoo_close
+                        if pct_diff > 0.15:
+                            print(f"[LIVE_DATA] REJECTED {sym}: LTP ₹{ltp} vs Yahoo ₹{yahoo_close:.2f} "
+                                  f"({pct_diff*100:.0f}% diff) — using Yahoo price")
+                            rejected += 1
+                            continue
 
                     # Update Close with live price
                     df.at[last_idx, "Close"] = ltp
@@ -164,7 +177,9 @@ class LiveDataBridge:
 
                     injected += 1
 
-            print(f"[LIVE_DATA] Injected live LTP into {injected} symbols")
+            print(f"[LIVE_DATA] Injected live LTP into {injected} symbols ({rejected} rejected)")
+        elif inject_ltp:
+            print(f"[LIVE_DATA] Market closed — using Yahoo prices only")
 
         return cache
 
