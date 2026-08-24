@@ -1,0 +1,4 @@
+date,scan_time,symbol,signal,strength,consensus_count,price,stop_loss,target_price,expected_return_pct,strategies,regime,universe,cycle
+2026-08-24,22:54:12,DRREDDY.NS,SELL,CONVICTION,5,100.0,105.0,92.0,8.0,MACD_12_26_9 | Breakout_20_Vol1.5 | Momentum_ROC20 | Regression_SuperTrend_20_2.0 | Liquidity_Sweep_P5_5,BULL,core,1
+2026-08-24,22:54:12,TATASTEEL.NS,BUY,CONVICTION,5,314.4,298.68,339.55,8.0,SMA_Crossover_20_50 | EMA_Crossover_12_26 | MACD_12_26_9 | Breakout_20_Vol1.5 | Regression_SuperTrend_20_2.0,BULL,core,1
+2026-08-24,22:54:12,M&M.NS,SELL,STRONG,3,1062.5,1115.62,977.5,8.0,EMA_Crossover_12_26 | Breakout_20_Vol1.5 | Momentum_ROC20,BULL,core,1

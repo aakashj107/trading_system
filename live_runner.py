@@ -36,6 +36,7 @@ from portfolio_manager import PortfolioManager
 from order_manager import OrderManager, OrderSide, OrderStatus
 from angel_one_live import LiveTrader
 from alerts import AlertSystem
+from trade_logger import log_signal, log_trade
 from config import (
     get_active_stocks,
     get_core_stocks,
@@ -222,6 +223,40 @@ def run_cycle(
     # ── 5. Send alerts ────────────────────────────────────────
     if executed and alert_system is not None:
         alert_system.send_live_trade_alert(executed, regime)
+
+    # ── 5b. Log signals and trades to CSV ─────────────────────
+    for c in consensus:
+        sym = c.symbol
+        if sym in cache and not cache[sym].empty:
+            price = float(cache[sym].iloc[-1]["Close"])
+        else:
+            price = bridge.get_ltp(sym) or 0
+
+        # Log every consensus signal
+        log_signal(
+            symbol=sym,
+            signal=c.signal_type,
+            strength=c.strength,
+            consensus_count=c.count,
+            price=price,
+            strategies=c.agreeing_strategies[:5],
+            regime=regime,
+            universe=universe,
+            cycle=state.cycle_count + 1,
+        )
+
+    # Log executed trades
+    for e in executed:
+        log_trade(
+            symbol=e["symbol"],
+            action=e["signal"],
+            entry_date=str(cycle_start.date()),
+            entry_price=e["price"],
+            quantity=e["quantity"],
+            strategy="consensus",
+            regime=regime,
+            cycle=state.cycle_count + 1,
+        )
 
     # ── 6. Log cycle ──────────────────────────────────────────
     cycle_end = datetime.now(IST)

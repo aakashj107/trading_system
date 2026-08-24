@@ -17,6 +17,9 @@ paper_trading_logs/
 reports/
 daily_logs/
 
+# Trade logs (tracked for 7-day paper trading)
+# trade_logs/
+
 # Database
 trading_system.db
 

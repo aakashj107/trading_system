@@ -59,11 +59,40 @@ jobs:
             echo "  No cycles yet"
           fi
           echo "============================================="
+          echo ""
+          echo "--- Signals CSV (last 5) ---"
+          if [ -f trade_logs/signals.csv ]; then
+            tail -5 trade_logs/signals.csv
+          else
+            echo "  No signals logged yet"
+          fi
+          echo ""
+          echo "--- Trades CSV (last 5) ---"
+          if [ -f trade_logs/trades.csv ]; then
+            tail -5 trade_logs/trades.csv
+          else
+            echo "  No trades logged yet"
+          fi
+
+      - name: Save CSV logs to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add trade_logs/
+          if git diff --cached --quiet; then
+            echo "No CSV changes to commit"
+          else
+            git commit -m "Trade logs $(date -u +%Y-%m-%d) cycle-$(echo $GITHUB_RUN_NUMBER)"
+            git push
+          fi
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cycle-logs-${{ github.run_number }}
-          path: daily_logs/live_cycles_*.jsonl
+          path: |
+            daily_logs/live_cycles_*.jsonl
+            trade_logs/*.csv
           retention-days: 30
