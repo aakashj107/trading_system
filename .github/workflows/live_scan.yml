@@ -2,14 +2,14 @@ name: Paper Trading Scan
 
 on:
   schedule:
-    - cron: '*/15 3-9 * * 1-5'
-    - cron: '0 10 * * 1-5'
+    - cron: '*/15 3-9 * * 1-5'   # Every 15 min during IST 8:30-15:29
+    - cron: '0 10 * * 1-5'       # Daily summary at IST 15:30
   workflow_dispatch:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
 
     steps:
       - name: Checkout repo
@@ -24,6 +24,34 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install smartapi-python pyotp python-dotenv logzero websocket-client schedule requests pandas numpy pytz yfinance
+
+      - name: Validate config
+        run: |
+          python3 -c "
+          from config import get_core_stocks, get_active_stocks, get_all_stocks, STOCK_UNIVERSE
+          core = get_core_stocks()
+          active = get_active_stocks()
+          all_s = get_all_stocks()
+          print(f'Config OK: {len(core)} core, {len(active)} active, {len(all_s)} total')
+          assert len(core) >= 30, f'Too few core stocks: {len(core)}'
+          assert len(active) >= 100, f'Active stocks missing: {len(active)}'
+          print('All validations passed')
+          "
+
+      - name: Validate token cache
+        run: |
+          python3 -c "
+          import json, os
+          cache_file = 'token_cache.json'
+          if os.path.exists(cache_file):
+              with open(cache_file) as f:
+                  cache = json.load(f)
+              print(f'Token cache: {len(cache)} symbols cached')
+              for sym, info in list(cache.items())[:5]:
+                  print(f'  {sym}: token={info[\"token\"]}, tradingsymbol={info[\"tradingsymbol\"]}')
+          else:
+              print('No token cache found — will resolve via searchScrip')
+          "
 
       - name: Run paper trading scan
         run: python live_runner.py --universe core --regime BULL
@@ -79,11 +107,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add trade_logs/
+          git add trade_logs/ daily_logs/ token_cache.json
           if git diff --cached --quiet; then
-            echo "No CSV changes to commit"
+            echo "No changes to commit"
           else
-            git commit -m "Trade logs $(date -u +%Y-%m-%d) cycle-$(echo $GITHUB_RUN_NUMBER)"
+            git commit -m "Logs & token cache $(date -u +%Y-%m-%d) cycle-$(echo $GITHUB_RUN_NUMBER)"
             git push
           fi
 
