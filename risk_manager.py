@@ -37,6 +37,7 @@ class RiskManager:
         self.risk_config = risk_config
         self.peak_capital = total_capital
         self.circuit_breaker_active = False
+        self.day_realized_pnl = 0.0
         self.alerts: List[str] = []
 
         # ── VIX-backed position sizing (delegated to the real gate) ──
@@ -92,6 +93,42 @@ class RiskManager:
                                 f"Too many {group} positions ({existing})",
                                 {"group": group, "existing": existing})
         return True, "OK", detail
+
+    # ==========================================================
+    #  CIRCUIT BREAKERS (daily loss + drawdown)
+    # ==========================================================
+    def record_realized_pnl(self, pnl: float):
+        """Record realized P&L from a closed trade; trips the breaker on breach."""
+        self.day_realized_pnl += pnl
+        loss_pct = -self.day_realized_pnl / self.total_capital
+        if loss_pct >= self.max_daily_loss_pct:
+            if not self.circuit_breaker_active:
+                self.circuit_breaker_active = True
+                self.alerts.append(
+                    f"Circuit breaker TRIPPED: daily loss {loss_pct:.1%} "
+                    f">= limit {self.max_daily_loss_pct:.0%}"
+                )
+
+    def update_equity(self, equity: float):
+        """Update peak-capital drawdown tracking; trips the breaker on breach."""
+        self.peak_capital = max(self.peak_capital, equity)
+        dd = 1 - equity / self.peak_capital
+        if dd >= self.max_drawdown_pct:
+            if not self.circuit_breaker_active:
+                self.circuit_breaker_active = True
+                self.alerts.append(
+                    f"Circuit breaker TRIPPED: drawdown {dd:.1%} "
+                    f">= limit {self.max_drawdown_pct:.0%}"
+                )
+
+    def reset_day(self):
+        """Reset the daily-loss counter (call at start of each trading day).
+        The drawdown breaker stays latched until manually cleared."""
+        self.day_realized_pnl = 0.0
+
+    def clear_circuit_breaker(self):
+        """Manually clear the breaker after review."""
+        self.circuit_breaker_active = False
 
     def get_dashboard(self, positions):
         return {"circuit_breaker": self.circuit_breaker_active,

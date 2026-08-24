@@ -38,9 +38,10 @@ except ImportError:
     pass
 
 from live_data import LiveDataBridge
-from live_runner import CycleState, run_cycle, send_daily_summary
+from live_runner import CycleState, run_cycle, send_daily_summary, restore_portfolio
 from portfolio_manager import PortfolioManager
 from order_manager import OrderManager
+from risk_manager import RiskManager
 from alerts import AlertSystem
 from config import get_core_stocks, get_active_stocks, get_all_stocks
 
@@ -49,6 +50,29 @@ IST = pytz.timezone("Asia/Kolkata")
 # Logging
 LOG_DIR = os.path.join(os.path.dirname(__file__), "daily_logs")
 os.makedirs(LOG_DIR, exist_ok=True)
+
+
+# ============================================================
+#  NSE HOLIDAYS (optional)
+# ============================================================
+
+def _load_holidays() -> set:
+    """
+    Load NSE trading holidays from nse_holidays.txt (one YYYY-MM-DD per line,
+    next to this script). If the file is absent, only weekends are excluded.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nse_holidays.txt")
+    holidays = set()
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    holidays.add(line)
+    return holidays
+
+
+NSE_HOLIDAYS = _load_holidays()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,9 +90,12 @@ logger = logging.getLogger("live_scheduler")
 # ============================================================
 
 def is_market_hours() -> bool:
-    """Check if current time is within Indian market hours (9:15-15:30 IST, Mon-Fri)."""
+    """Check if current time is within Indian market hours (9:15-15:30 IST, Mon-Fri,
+    excluding NSE holidays listed in nse_holidays.txt)."""
     now = datetime.now(IST)
     if now.weekday() >= 5:
+        return False
+    if now.strftime("%Y-%m-%d") in NSE_HOLIDAYS:
         return False
     market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
@@ -76,13 +103,13 @@ def is_market_hours() -> bool:
 
 
 def is_market_close() -> bool:
-    """Check if it's market close time (3:30 PM IST) — for daily summary."""
+    """Check if it's within the market-close window (15:25-15:40 IST) —
+    for daily summary. Uses a window so a delayed loop tick still catches it."""
     now = datetime.now(IST)
-    return (
-        now.weekday() < 5
-        and now.hour == 15
-        and now.minute == 30
-    )
+    if now.weekday() >= 5 or now.strftime("%Y-%m-%d") in NSE_HOLIDAYS:
+        return False
+    close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return abs((now - close).total_seconds()) <= 5 * 60
 
 
 # ============================================================
@@ -119,13 +146,19 @@ class LiveScheduler:
         # Components
         self.bridge = LiveDataBridge(mode=live_mode)
         self.state = CycleState()
-        self.portfolio = PortfolioManager(total_capital=capital, max_positions=10)
-        self.order_manager = OrderManager(portfolio=self.portfolio)
+        self.portfolio = restore_portfolio(
+            PortfolioManager(total_capital=capital, max_positions=10)
+        )
+        self.risk_manager = RiskManager(total_capital=capital)
+        self.order_manager = OrderManager(
+            portfolio=self.portfolio, risk_manager=self.risk_manager
+        )
         self.alert_system = AlertSystem()
 
         # Control
         self._running = False
         self._shutdown_requested = False
+        self._breaker_alerted = False
 
         # Register signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._handle_shutdown)
@@ -159,8 +192,23 @@ class LiveScheduler:
                 alert_system=self.alert_system,
                 portfolio=self.portfolio,
                 order_manager=self.order_manager,
+                risk_manager=self.risk_manager,
             )
             logger.info(f"Cycle result: {result['status']}")
+
+            if self.risk_manager.circuit_breaker_active:
+                logger.warning(
+                    "CIRCUIT BREAKER ACTIVE — new entries blocked. "
+                    f"Alerts: {self.risk_manager.alerts[-3:]}"
+                )
+                if self.alert_system is not None and not getattr(
+                        self, "_breaker_alerted", False):
+                    self.alert_system.send_message(
+                        "*CIRCUIT BREAKER TRIPPED*\n"
+                        + "\n".join(self.risk_manager.alerts[-3:])
+                        + "\nNew entries blocked until manual review."
+                    )
+                    self._breaker_alerted = True
 
         except Exception as e:
             logger.error(f"Cycle failed: {type(e).__name__}: {e}", exc_info=True)
@@ -176,8 +224,10 @@ class LiveScheduler:
         except Exception as e:
             logger.error(f"Daily summary failed: {e}")
 
-        # Reset state for next day
+        # Reset state for next day (daily-loss counter resets; the drawdown
+        # breaker stays latched until RiskManager.clear_circuit_breaker())
         self.state = CycleState()
+        self.risk_manager.reset_day()
 
     def start(self):
         """Start the scheduler. Blocks until shutdown."""

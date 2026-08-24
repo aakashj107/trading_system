@@ -17,8 +17,13 @@ paper_trading_logs/
 reports/
 daily_logs/
 
-# Trade logs (tracked for 7-day paper trading)
-# trade_logs/
+# Trade logs (runtime state, uploaded as CI artifacts)
+trade_logs/
+live_state/
+token_cache.json
+
+# NSE holiday calendar (local, optional — see live_scheduler.py)
+nse_holidays.txt
 
 # Database
 trading_system.db

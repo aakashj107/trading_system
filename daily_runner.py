@@ -196,7 +196,7 @@ class DailyRunner:
         self.risk_manager.regime = self.regime
 
     def _regime_icon(self):
-        icons = {"BULL": "↑", "BEAR": "↓", "SIDESWAYS": "↔", "UNKNOWN": "?"}
+        icons = {"BULL": "↑", "BEAR": "↓", "SIDEWAYS": "↔", "UNKNOWN": "?"}
         return icons.get(self.regime, "?")
 
     # ============================================================
@@ -216,9 +216,9 @@ class DailyRunner:
             else:
                 self.vix_value = 15.0
                 print("  [WARNING] VIX data unavailable, defaulting to 15.0")
-        except:
+        except Exception as e:
             self.vix_value = 15.0
-            print("  [WARNING] VIX fetch failed, defaulting to 15.0")
+            print(f"  [WARNING] VIX fetch failed ({e}), defaulting to 15.0")
 
         # Update risk manager
         self.risk_manager.update_vix(self.vix_value)
@@ -391,7 +391,7 @@ class DailyRunner:
         data_dict = {s: self.stock_data_cache[s] for s in test_stocks}
         bt = Backtester(initial_capital=500000, position_size_pct=0.15)
 
-        strategies = get_regime_strategies(self.regime or "SIDESWAYS")
+        strategies = get_regime_strategies(self.regime or "SIDEWAYS")
         comparison = []
 
         # Show strategy weights
@@ -422,8 +422,8 @@ class DailyRunner:
                         "Sharpe": a["sharpe_ratio"],
                         "ProfitFactor": a["profit_factor"]
                     })
-            except:
-                pass
+            except Exception as e:
+                print(f"  [WARNING] Backtest failed for {strat.name}: {e}")
 
         if comparison:
             df = pd.DataFrame(comparison).sort_values("Sharpe", ascending=False)
@@ -446,10 +446,10 @@ class DailyRunner:
                      "structure": 1.0, "adaptive": 1.0, "bear_short": 0.0},
             "BEAR": {"trend": 0.3, "momentum": 0.3, "mean_reversion": 1.2,
                      "structure": 1.0, "adaptive": 0.8, "bear_short": 1.3},
-            "SIDESWAYS": {"trend": 1.0, "momentum": 1.0, "mean_reversion": 1.0,
+            "SIDEWAYS": {"trend": 1.0, "momentum": 1.0, "mean_reversion": 1.0,
                           "structure": 1.0, "adaptive": 1.0, "bear_short": 0.5},
         }
-        weights = regime_weights.get(self.regime or "SIDESWAYS", regime_weights["SIDESWAYS"])
+        weights = regime_weights.get(self.regime or "SIDEWAYS", regime_weights["SIDEWAYS"])
         return weights.get(strat.category, 1.0)
 
     # ============================================================
@@ -458,7 +458,7 @@ class DailyRunner:
 
     def _run_signal_scan(self):
         """Run daily signal scan with regime-aware strategies."""
-        strategies = get_regime_strategies(self.regime or "SIDESWAYS")
+        strategies = get_regime_strategies(self.regime or "SIDEWAYS")
 
         print(f"\n  Scanning {len(self.stock_data_cache)} stocks "
               f"with {len(strategies)} strategies...")
@@ -466,7 +466,7 @@ class DailyRunner:
         scanner = SignalScanner(
             symbols=list(self.stock_data_cache.keys()),
             strategies=strategies,
-            regime=self.regime or "SIDESWAYS"
+            regime=self.regime or "SIDEWAYS"
         )
 
         # Use cached data
@@ -713,7 +713,7 @@ class DailyRunner:
         """Run paper trading simulation with regime-aware strategies."""
         from strategies import get_regime_strategies
 
-        strategies = get_regime_strategies(self.regime or "SIDESWAYS")
+        strategies = get_regime_strategies(self.regime or "SIDEWAYS")
         test_stocks = list(self.stock_data_cache.keys())[:5]
 
         if not test_stocks:
@@ -761,17 +761,21 @@ class DailyRunner:
                         date = str(df.index[idx].date())
                         atr_val = atr_series.iloc[idx] if not pd.isna(atr_series.iloc[idx]) else None
 
-                        # Check risk before trading
-                        allowed, reason, _ = self.risk_manager.check_pre_trade(
-                            symbol,
-                            "BUY" if signal > 0 else "SELL",
-                            trader.positions,
-                            price,
-                            atr_val or 0
-                        )
-
-                        if not allowed:
-                            continue
+                        # Only entries (BUY=1, SHORT=-2) are risk-gated;
+                        # exits (SELL=-1, COVER=2) always pass through.
+                        if signal in (1, -2):
+                            side = "BUY" if signal == 1 else "SHORT"
+                            open_symbols = list(trader.positions.keys()) + \
+                                list(getattr(trader, "short_positions", {}).keys())
+                            allowed, reason, _ = self.risk_manager.check_pre_trade(
+                                symbol,
+                                side,
+                                open_symbols,
+                                price,
+                                atr_val or 0
+                            )
+                            if not allowed:
+                                continue
 
                         trader.process_signal(
                             symbol, signal, price, date, strat.name,
@@ -779,7 +783,7 @@ class DailyRunner:
                         )
 
                 except Exception as e:
-                    pass
+                    print(f"  [WARNING] Paper trading failed for {symbol}: {e}")
 
             # Close remaining positions
             for symbol in list(trader.positions.keys()):
@@ -855,7 +859,7 @@ class DailyRunner:
         # Print summary
         print(f"\n  Duration:         {duration:.1f}s")
         print(f"  Stocks Analyzed:  {len(self.verdicts)}")
-        print(f"  Strategies:       {len(get_regime_strategies(self.regime or 'SIDESWAYS'))}")
+        print(f"  Strategies:       {len(get_regime_strategies(self.regime or 'SIDEWAYS'))}")
         print(f"  Market Regime:    {self.regime}")
         print(f"  India VIX:        {self.vix_value}")
         print(f"  Position Size:    {self.risk_manager.vix_position_pct*100:.0f}%")
@@ -935,8 +939,8 @@ class DailyRunner:
                         row["Date"], row["Symbol"], row["Strategy"],
                         row["Signal"], row["Price"]
                     )
-                except:
-                    pass
+                except Exception as e:
+                    print(f"  [WARNING] DB log failed for {row['Symbol']}: {e}")
 
         print(f"  Report complete: {self.log_dir}/")
 
@@ -964,7 +968,7 @@ class DailyRunner:
         print(f"  DAILY SCAN — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
         print(f"{'='*60}")
 
-        strategies = get_regime_strategies(self.regime or "SIDESWAYS")
+        strategies = get_regime_strategies(self.regime or "SIDEWAYS")
         scanner = SignalScanner(symbols=self.symbols, strategies=strategies)
         signals = scanner.scan()
         scanner.print_signals(signals)

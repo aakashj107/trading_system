@@ -34,9 +34,17 @@ from scanner import SignalScanner
 from market_intelligence import ConsensusFilter
 from portfolio_manager import PortfolioManager
 from order_manager import OrderManager, OrderSide, OrderStatus
+from risk_manager import RiskManager
 from angel_one_live import LiveTrader
 from alerts import AlertSystem
-from trade_logger import log_signal, log_trade
+from trade_logger import (
+    log_signal,
+    log_trade,
+    load_open_positions,
+    save_open_positions,
+    record_entry,
+    pop_entry,
+)
 from config import (
     get_active_stocks,
     get_core_stocks,
@@ -70,7 +78,8 @@ class CycleState:
         self.total_rejected = 0
         self.symbols_scanned = 0
 
-    def update(self, signals_df: pd.DataFrame, buy: int, sell: int, rejected: int):
+    def update(self, signals_df: pd.DataFrame, buy: int, sell: int, rejected: int,
+               consensus: Optional[List] = None):
         self.cycle_count += 1
         self.last_scan_time = datetime.now(IST)
         self.total_buy_orders += buy
@@ -78,8 +87,13 @@ class CycleState:
         self.total_rejected += rejected
         if not signals_df.empty:
             self.symbols_scanned = signals_df["Symbol"].nunique()
-            # Store latest consensus signals (not individual strategy rows)
-            self.last_signals = []
+        # Store latest consensus signals (symbol/type/strength) for the summary
+        if consensus:
+            self.last_signals = [
+                {"symbol": c.symbol, "signal": c.signal_type,
+                 "strength": c.strength, "count": c.count}
+                for c in consensus
+            ]
 
     def summary(self) -> str:
         return (
@@ -95,6 +109,18 @@ class CycleState:
 #  CORE RUN CYCLE
 # ============================================================
 
+def fetch_vix() -> Optional[float]:
+    """Fetch current India VIX level via Yahoo Finance."""
+    try:
+        import yfinance as yf
+        df = yf.download("^INDIAVIX", period="5d", progress=False)
+        if not df.empty:
+            return round(float(df["Close"].iloc[-1].item()), 1)
+    except Exception as e:
+        logger.warning(f"VIX fetch failed: {e}")
+    return None
+
+
 def run_cycle(
     bridge: LiveDataBridge,
     state: CycleState,
@@ -106,21 +132,50 @@ def run_cycle(
     alert_system: Optional[AlertSystem] = None,
     portfolio: Optional[PortfolioManager] = None,
     order_manager: Optional[OrderManager] = None,
+    risk_manager: Optional[RiskManager] = None,
+    max_hold_days: int = 7,
+    min_profit_time_exit: float = 0.01,
 ) -> Dict:
     """
     Execute one complete scan cycle.
 
     1. Build live data cache (historical + live LTP)
-    2. Run SignalScanner on all stocks
-    3. Extract consensus signals (min_agree)
-    4. Execute through OrderManager → LiveTrader
-    5. Send Telegram alerts
-    6. Log everything
+    2. Update VIX sizing; enforce stop-loss / target / time exits
+    3. Run SignalScanner on all stocks
+    4. Extract consensus signals (min_agree)
+    5. Execute through OrderManager (risk-gated) → LiveTrader
+    6. Send Telegram alerts, log everything, snapshot cycle health
+
+    Args:
+        max_hold_days: exit positions held this many days (time exit)
+        min_profit_time_exit: min profit fraction required to avoid time exit
 
     Returns:
         Dict with cycle results for logging/alerting.
     """
     cycle_start = datetime.now(IST)
+
+    # ── 0a. New trading day → reset daily-loss counter ────────
+    if risk_manager is not None:
+        today = cycle_start.date()
+        if getattr(state, "_last_day", None) != today:
+            risk_manager.reset_day()
+            state._last_day = today
+
+    # ── 0b. VIX risk gate — update position sizing ────────────
+    vix_level = None
+    if risk_manager is not None:
+        vix_level = fetch_vix()
+        if vix_level is not None:
+            risk_manager.update_vix(vix_level)
+            logger.info(f"India VIX: {vix_level} → {risk_manager.vix_risk_mode} "
+                        f"({risk_manager.vix_position_pct*100:.0f}% per trade, "
+                        f"max {risk_manager.vix_max_positions} positions)")
+
+    if risk_manager is not None and risk_manager.circuit_breaker_active:
+        for a in risk_manager.alerts[-3:]:
+            logger.warning(f"CIRCUIT BREAKER: {a}")
+
     logger.info(f"=== Cycle #{state.cycle_count + 1} starting at {cycle_start.strftime('%H:%M:%S')} ===")
 
     # ── 1. Build live data cache ──────────────────────────────
@@ -138,7 +193,78 @@ def run_cycle(
         logger.warning("No data available — aborting cycle")
         return {"status": "NO_DATA", "cycle": state.cycle_count + 1}
 
-    # ── 2. Run scanner ────────────────────────────────────────
+    # ── 2. Enforce exits on open positions ────────────────────
+    # (stop losses, profit targets, and time-based exits)
+    exits_executed = []
+    if order_manager is not None and portfolio is not None and portfolio.positions:
+        prices = {sym: float(df.iloc[-1]["Close"])
+                  for sym, df in cache.items() if not df.empty}
+
+        # 2a. Stop loss / profit target
+        pending = [(sym, price, reason) for sym, price, reason
+                   in order_manager.check_exits(prices)]
+        open_state = load_open_positions()
+
+        # 2b. Time-based exit: held too long with negligible profit
+        for sym, pos in portfolio.positions.items():
+            if any(s[0] == sym for s in pending):
+                continue
+            cur = prices.get(sym)
+            entry_info = open_state.get(sym)
+            if cur is None or not entry_info:
+                continue
+            try:
+                hold_days = (cycle_start.date()
+                             - datetime.strptime(
+                                 str(entry_info["entry_date"]), "%Y-%m-%d").date()).days
+            except ValueError:
+                continue
+            pnl_pct = (cur / float(entry_info["entry_price"]) - 1) * 100
+            if hold_days >= max_hold_days and pnl_pct < min_profit_time_exit * 100:
+                pending.append((sym, cur, "TIME_EXIT"))
+                logger.info(f"TIME EXIT candidate: {sym} held {hold_days}d, "
+                            f"P&L {pnl_pct:+.1f}%")
+
+        for sym, price, reason in pending:
+            order = order_manager.process_signal(sym, "SELL", price, reason)
+            if order is not None:
+                bridge.trader.place_order(sym, "SELL", order.quantity, price)
+                exits_executed.append({
+                    "symbol": sym, "price": price,
+                    "quantity": order.quantity, "reason": reason,
+                })
+                logger.warning(f"{reason} hit: SELL {order.quantity}x {sym} @ ₹{price:,.2f}")
+
+    if alert_system is not None and exits_executed:
+        alert_system.send_message(
+            "*Position Exits Executed*\n" +
+            "\n".join(f"SELL {s['symbol']} @ ₹{s['price']:,.2f} ({s['reason']})"
+                      for s in exits_executed)
+        )
+
+        # Close out tracked entries for rule-based exits with full P&L
+        for s in exits_executed:
+            entry_info = pop_entry(s["symbol"])
+            if entry_info:
+                pnl = (s["price"] - entry_info["entry_price"]) * s["quantity"]
+                pnl_pct = ((s["price"] / entry_info["entry_price"]) - 1) * 100
+                log_trade(
+                    symbol=s["symbol"],
+                    action="SELL",
+                    entry_date=str(entry_info["entry_date"]),
+                    entry_price=entry_info["entry_price"],
+                    quantity=s["quantity"],
+                    strategy=entry_info.get("strategy", "consensus"),
+                    regime=regime,
+                    cycle=state.cycle_count + 1,
+                    exit_date=str(cycle_start.date()),
+                    exit_price=s["price"],
+                    pnl=pnl,
+                    pnl_pct=pnl_pct,
+                    exit_reason=s["reason"],
+                )
+
+    # ── 3. Run scanner ────────────────────────────────────────
     scanner = SignalScanner(
         regime=regime,
         period="6mo",
@@ -151,7 +277,7 @@ def run_cycle(
         state.update(pd.DataFrame(), 0, 0, 0)
         return {"status": "NO_SIGNALS", "cycle": state.cycle_count + 1}
 
-    # ── 3. Extract consensus ──────────────────────────────────
+    # ── 4. Extract consensus ──────────────────────────────────
     cf = ConsensusFilter()
 
     # Build the signals DataFrame for consensus (Symbol, Signal, Strategy)
@@ -190,15 +316,18 @@ def run_cycle(
                 continue
             price = ltp
 
-        # Execute through OrderManager
-        if order_manager is not None:
-            order = order_manager.process_signal(
+        # Execute through OrderManager — risk gating (circuit breaker,
+        # correlation limits) is applied inside OrderManager when a
+        # risk_manager is attached to it.
+        order = (
+            order_manager.process_signal(
                 sym, signal_type, price,
                 "consensus_live",
                 stop_loss=price * 0.95,
+                target=price * 1.08,
             )
-        else:
-            order = None
+            if order_manager is not None else None
+        )
 
         # Mirror to LiveTrader (paper_api)
         live_trader = bridge.trader
@@ -245,18 +374,78 @@ def run_cycle(
             cycle=state.cycle_count + 1,
         )
 
-    # Log executed trades
+    # Log executed trades (BUY = open entry row; SELL = close out with P&L)
     for e in executed:
-        log_trade(
-            symbol=e["symbol"],
-            action=e["signal"],
-            entry_date=str(cycle_start.date()),
-            entry_price=e["price"],
-            quantity=e["quantity"],
-            strategy="consensus",
-            regime=regime,
-            cycle=state.cycle_count + 1,
-        )
+        if e["signal"] == "BUY":
+            record_entry(
+                symbol=e["symbol"],
+                entry_price=e["price"],
+                quantity=e["quantity"],
+                entry_date=str(cycle_start.date()),
+                stop_loss=e["price"] * 0.95,
+                target=e["price"] * 1.08,
+                strategy="consensus",
+            )
+            log_trade(
+                symbol=e["symbol"],
+                action="BUY",
+                entry_date=str(cycle_start.date()),
+                entry_price=e["price"],
+                quantity=e["quantity"],
+                strategy="consensus",
+                regime=regime,
+                cycle=state.cycle_count + 1,
+            )
+        else:
+            entry_info = pop_entry(e["symbol"])
+            matched_exit = next((x for x in exits_executed
+                                 if x["symbol"] == e["symbol"]), None)
+            exit_reason = matched_exit["reason"] if matched_exit else "CONSENSUS_SELL"
+            if entry_info:
+                pnl = (e["price"] - entry_info["entry_price"]) * e["quantity"]
+                pnl_pct = ((e["price"] / entry_info["entry_price"]) - 1) * 100
+                try:
+                    hold_days = max(0, (
+                        datetime.strptime(str(cycle_start.date()), "%Y-%m-%d")
+                        - datetime.strptime(str(entry_info["entry_date"]), "%Y-%m-%d")
+                    ).days)
+                except ValueError:
+                    hold_days = 0
+                log_trade(
+                    symbol=e["symbol"],
+                    action="SELL",
+                    entry_date=str(entry_info["entry_date"]),
+                    entry_price=entry_info["entry_price"],
+                    quantity=e["quantity"],
+                    strategy=entry_info.get("strategy", "consensus"),
+                    regime=regime,
+                    cycle=state.cycle_count + 1,
+                    exit_date=str(cycle_start.date()),
+                    exit_price=e["price"],
+                    pnl=pnl,
+                    pnl_pct=pnl_pct,
+                    hold_days=hold_days,
+                    exit_reason=exit_reason,
+                )
+            else:
+                # No tracked entry (e.g. state was lost) — log what we know
+                log_trade(
+                    symbol=e["symbol"],
+                    action="SELL",
+                    entry_date="",
+                    entry_price=0.0,
+                    quantity=e["quantity"],
+                    strategy="consensus",
+                    regime=regime,
+                    cycle=state.cycle_count + 1,
+                    exit_date=str(cycle_start.date()),
+                    exit_price=e["price"],
+                    exit_reason=exit_reason,
+                )
+
+    # Persist portfolio positions so restarts/new runs remember holdings
+    if portfolio is not None:
+        save_open_positions(portfolio.positions)
 
     # ── 6. Log cycle ──────────────────────────────────────────
     cycle_end = datetime.now(IST)
@@ -275,12 +464,35 @@ def run_cycle(
         "consensus_signals": len(consensus),
         "buy_orders": buy_orders,
         "sell_orders": sell_orders,
+        "rule_exits": len(exits_executed),
+        "vix": vix_level,
+        "risk_mode": risk_manager.vix_risk_mode if risk_manager else "",
+        "circuit_breaker": risk_manager.circuit_breaker_active if risk_manager else False,
         "rejected": rejected,
         "executed": executed,
     }
 
-    state.update(signals_df, buy_orders, sell_orders, rejected)
+    state.update(signals_df, buy_orders, sell_orders, rejected,
+                 consensus=consensus)
     _log_cycle(cycle_result)
+
+    # Cycle-health snapshot for the 7-day evaluation
+    try:
+        from trade_logger import log_snapshot
+        invested = sum(p["price"] * p["qty"]
+                       for p in portfolio.positions.values()) if portfolio else 0.0
+        log_snapshot(
+            cycle=cycle_result["cycle"], regime=regime, vix=vix_level,
+            risk_mode=risk_manager.vix_risk_mode if risk_manager else "-",
+            symbols_scanned=len(cache), raw_signals=len(signals_df),
+            consensus_signals=len(consensus), buy_orders=buy_orders,
+            sell_orders=sell_orders, exits=len(exits_executed),
+            rejected=rejected, open_positions=len(portfolio.positions) if portfolio else 0,
+            invested_value=invested,
+            circuit_breaker=bool(risk_manager.circuit_breaker_active) if risk_manager else False,
+        )
+    except Exception as e:
+        logger.warning(f"Snapshot log failed: {e}")
 
     logger.info(
         f"Cycle #{state.cycle_count} complete in {duration:.1f}s — "
@@ -288,6 +500,25 @@ def run_cycle(
     )
 
     return cycle_result
+
+
+def restore_portfolio(portfolio: PortfolioManager):
+    """Restore open positions from persistent state (survives restarts and
+    fresh GitHub Actions runs)."""
+    saved = load_open_positions()
+    for sym, info in saved.items():
+        if sym not in portfolio.positions:
+            portfolio.positions[sym] = {
+                "symbol": sym,
+                "price": info.get("entry_price", 0.0),
+                "qty": info.get("quantity", 0),
+                "stop_loss": info.get("stop_loss", 0.0),
+                "target": info.get("target", 0.0),
+            }
+    if saved:
+        logger.info(f"Restored {len(saved)} open position(s) from state: "
+                    f"{', '.join(saved.keys())}")
+    return portfolio
 
 
 def _log_cycle(result: Dict):
@@ -356,8 +587,11 @@ def main():
         sys.exit(1)
 
     state = CycleState()
-    portfolio = PortfolioManager(total_capital=args.capital, max_positions=10)
-    om = OrderManager(portfolio=portfolio)
+    portfolio = restore_portfolio(
+        PortfolioManager(total_capital=args.capital, max_positions=10)
+    )
+    risk = RiskManager(total_capital=args.capital)
+    om = OrderManager(portfolio=portfolio, risk_manager=risk)
     alerts = AlertSystem()
 
     result = run_cycle(
@@ -371,6 +605,7 @@ def main():
         alert_system=alerts,
         portfolio=portfolio,
         order_manager=om,
+        risk_manager=risk,
     )
 
     print(f"\nCycle result:")

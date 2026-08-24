@@ -9,14 +9,22 @@ Both files append-only and auto-create headers on first write.
 """
 import os
 import csv
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
 import pytz
 
 IST = pytz.timezone("Asia/Kolkata")
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_logs")
+_LOG_ROOT = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR = os.path.join(_LOG_ROOT, "trade_logs")
 os.makedirs(LOG_DIR, exist_ok=True)
+
+# Persistent open-position state — survives process restarts and is carried
+# across GitHub Actions runs via actions/cache (trade_logs/ + live_state/)
+STATE_DIR = os.path.join(_LOG_ROOT, "live_state")
+os.makedirs(STATE_DIR, exist_ok=True)
+STATE_FILE = os.path.join(STATE_DIR, "open_positions.json")
 
 SIGNALS_FILE = os.path.join(LOG_DIR, "signals.csv")
 TRADES_FILE = os.path.join(LOG_DIR, "trades.csv")
@@ -125,6 +133,77 @@ def log_trade(
     ]
 
     with open(TRADES_FILE, "a", newline="") as f:
+        csv.writer(f).writerow(row)
+
+
+def load_open_positions() -> Dict:
+    """Load open-position state from disk (empty dict if missing/corrupt)."""
+    if not os.path.exists(STATE_FILE):
+        return {}
+    try:
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def save_open_positions(positions: Dict):
+    """Persist open-position state to disk."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(STATE_FILE, "w") as f:
+        json.dump(positions, f, indent=2, default=str)
+
+
+def record_entry(symbol: str, entry_price: float, quantity: int,
+                 entry_date: str, stop_loss: float = 0.0,
+                 target: float = 0.0, strategy: str = ""):
+    """Record an open position in persistent state."""
+    positions = load_open_positions()
+    positions[symbol] = {
+        "entry_price": round(entry_price, 2),
+        "quantity": quantity,
+        "entry_date": entry_date,
+        "stop_loss": round(stop_loss, 2) if stop_loss else 0.0,
+        "target": round(target, 2) if target else 0.0,
+        "strategy": strategy,
+    }
+    save_open_positions(positions)
+
+
+def pop_entry(symbol: str) -> Optional[Dict]:
+    """Remove and return a symbol's entry info (None if not tracked)."""
+    positions = load_open_positions()
+    info = positions.pop(symbol, None)
+    if info is not None:
+        save_open_positions(positions)
+    return info
+
+
+SNAPSHOT_FILE = os.path.join(LOG_DIR, "equity.csv")
+SNAPSHOT_HEADERS = [
+    "date", "time", "cycle", "regime", "vix", "risk_mode",
+    "symbols_scanned", "raw_signals", "consensus_signals",
+    "buy_orders", "sell_orders", "exits", "rejected",
+    "open_positions", "invested_value", "circuit_breaker",
+]
+
+
+def log_snapshot(cycle: int, regime: str, vix: Optional[float],
+                 risk_mode: str, symbols_scanned: int, raw_signals: int,
+                 consensus_signals: int, buy_orders: int, sell_orders: int,
+                 exits: int, rejected: int, open_positions: int,
+                 invested_value: float, circuit_breaker: bool):
+    """Append one cycle-health snapshot row to equity.csv."""
+    _ensure_header(SNAPSHOT_FILE, SNAPSHOT_HEADERS)
+    now = datetime.now(IST)
+    row = [
+        now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), cycle,
+        regime, vix if vix is not None else "", risk_mode,
+        symbols_scanned, raw_signals, consensus_signals,
+        buy_orders, sell_orders, exits, rejected,
+        open_positions, round(invested_value, 2), circuit_breaker,
+    ]
+    with open(SNAPSHOT_FILE, "a", newline="") as f:
         csv.writer(f).writerow(row)
 
 

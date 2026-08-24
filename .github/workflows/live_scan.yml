@@ -15,6 +15,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Restore trading state (positions, logs)
+        uses: actions/cache@v4
+        with:
+          path: |
+            trade_logs
+            live_state
+          key: live-state-${{ github.run_id }}
+          restore-keys: |
+            live-state-
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -102,18 +112,12 @@ jobs:
             echo "  No trades logged yet"
           fi
 
-      - name: Save CSV logs to repo
+      - name: Daily report (job summary + console)
         if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add trade_logs/ daily_logs/ token_cache.json
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Logs & token cache $(date -u +%Y-%m-%d) cycle-$(echo $GITHUB_RUN_NUMBER)"
-            git push
-          fi
+          python3 daily_report.py | tee daily_report.md >> "$GITHUB_STEP_SUMMARY"
+          echo ""
+          echo "--- Report also saved as artifact (daily_report.md) ---"
 
       - name: Upload logs
         if: always()
@@ -123,4 +127,5 @@ jobs:
           path: |
             daily_logs/live_cycles_*.jsonl
             trade_logs/*.csv
+            daily_report.md
           retention-days: 30
