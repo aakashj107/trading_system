@@ -83,6 +83,9 @@ class Sector(Enum):
     TELECOM = "Telecom"
     CEMENT = "Cement"
     DIVERSIFIED = "Diversified"
+    CHEMICALS = "Chemicals"
+    REALESTATE = "Real Estate"
+    SERVICES = "Services"
 
 
 @dataclass
@@ -101,97 +104,175 @@ class StockInfo:
 
 # Correlation groups — stocks that move together
 CORRELATION_GROUPS = {
-    "PRIVATE_BANKS": ["HDFCBANK.NS", "ICICIBANK.NS", "KOTAKBANK.NS", "AXISBANK.NS", "INDUSINDBK.NS"],
-    "PSU_BANKS": ["SBIN.NS"],
-    "NBFC": ["BAJFINANCE.NS", "BAJAJFINSV.NS", "SHRIRAMFIN.NS", "MUTHOOTFIN.NS"],
+    # ── Banks (all move together on RBI/rate decisions) ──────
+    "PRIVATE_BANKS": ["HDFCBANK.NS", "ICICIBANK.NS", "KOTAKBANK.NS", "AXISBANK.NS"],
+    "PSU_BANKS": ["SBIN.NS", "BANKBARODA.NS", "CANBK.NS", "PNB.NS", "UNIONBANK.NS"],
+    # ── NBFCs (rate sensitive) ──────────────────────────────
+    "NBFC": ["BAJFINANCE.NS", "BAJAJFINSV.NS", "SHRIRAMFIN.NS", "MUTHOOTFIN.NS", "CHOLAFIN.NS", "RECLTD.NS", "PFC.NS"],
+    # ── Insurance ───────────────────────────────────────────
     "INSURANCE": ["HDFCLIFE.NS", "SBILIFE.NS"],
-    "IT_SERVICES": ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS", "MPHASIS.NS"],
-    "PHARMA": ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "LUPIN.NS"],
-    "AUTO": ["MARUTI.NS", "M&M.NS", "TMCV.NS", "TMPV.NS", "EICHERMOT.NS", "HEROMOTOCO.NS", "BAJAJ-AUTO.NS"],
-    "OIL_GAS": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
-    "METALS": ["JSWSTEEL.NS", "TATASTEEL.NS", "HINDALCO.NS", "COALINDIA.NS"],
-    "ADANI": ["ADANIENT.NS", "ADANIPORTS.NS"],
+    # ── IT Services (global spend) ──────────────────────────
+    "IT_SERVICES": ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS", "LTM.NS"],
+    # ── Pharma (FDA/drug pipeline) ──────────────────────────
+    "PHARMA": ["SUNPHARMA.NS", "DRREDDY.NS", "CIPLA.NS", "DIVISLAB.NS", "TORNTPHARM.NS", "ZYDUSLIFE.NS"],
+    # ── Hospitals ───────────────────────────────────────────
+    "HOSPITALS": ["APOLLOHOSP.NS", "MAXHEALTH.NS"],
+    # ── Auto (EV, demand cycle) ─────────────────────────────
+    "PASSENGER_AUTO": ["MARUTI.NS", "M&M.NS", "HYUNDAI.NS", "TMPV.NS"],
+    "TWO_WHEELER": ["BAJAJ-AUTO.NS", "TVSMOTOR.NS", "EICHERMOT.NS"],
+    "AUTO_COMP": ["MOTHERSON.NS", "BOSCHLTD.NS"],
+    # ── Oil & Gas (crude联动) ────────────────────────────────
+    "OIL_GAS": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS", "IOC.NS", "GAIL.NS", "COALINDIA.NS"],
+    # ── Power (regulatory/capex) ────────────────────────────
+    "POWER": ["NTPC.NS", "POWERGRID.NS", "TATAPOWER.NS", "ADANIPOWER.NS"],
+    # ── Metals (global commodity cycle) ─────────────────────
+    "METALS": ["TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS", "VEDL.NS", "JINDALSTEL.NS"],
+    # ── Adani Group ─────────────────────────────────────────
+    "ADANI": ["ADANIENT.NS", "ADANIPORTS.NS", "ADANIGREEN.NS", "ADANIPOWER.NS", "ADANIENSOL.NS"],
+    # ── Defence/Aerospace (government orders) ───────────────
+    "DEFENCE": ["HAL.NS", "BEL.NS", "MAZDOCK.NS"],
+    # ── Industrial/EPC (capex cycle) ────────────────────────
+    "INDUSTRIAL": ["LT.NS", "SIEMENS.NS", "ABB.NS", "CGPOWER.NS", "CUMMINSIND.NS", "ENRIN.NS"],
+    # ── Cement (infra demand) ───────────────────────────────
+    "CEMENT": ["ULTRACEMCO.NS", "AMBUJACEM.NS", "SHREECEM.NS", "GRASIM.NS"],
+    # ── FMCG (consumption theme) ────────────────────────────
+    "FMCG": ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS", "TATACONSUM.NS", "BRITANNIA.NS", "GODREJCP.NS", "UNITDSPR.NS", "VBL.NS"],
+    # ── Consumer Discretionary ──────────────────────────────
+    "CONSUMER": ["TITAN.NS", "ASIANPAINT.NS", "DMART.NS", "TRENT.NS", "INDHOTEL.NS"],
 }
 
 
 STOCK_UNIVERSE: Dict[str, StockInfo] = {
+    # ══════════════════════════════════════════════════════════════════════════
+    #  NIFTY 100 — Official constituents from NSE (as of Aug 2026)
+    #  100 stocks, all large-cap, sector-balanced, high liquidity
+    # ══════════════════════════════════════════════════════════════════════════
 
-    # ── FINANCIAL SERVICES (8 stocks — down from 12) ──────────
-    "HDFCBANK.NS":    StockInfo("HDFCBANK.NS",    Sector.FINANCIAL_SERVICES, "Private Bank",    "LARGE", 1),
-    "ICICIBANK.NS":   StockInfo("ICICIBANK.NS",   Sector.FINANCIAL_SERVICES, "Private Bank",    "LARGE", 1),
-    "SBIN.NS":        StockInfo("SBIN.NS",        Sector.FINANCIAL_SERVICES, "PSU Bank",        "LARGE", 1),
-    "KOTAKBANK.NS":   StockInfo("KOTAKBANK.NS",   Sector.FINANCIAL_SERVICES, "Private Bank",    "LARGE", 1),
-    "AXISBANK.NS":    StockInfo("AXISBANK.NS",    Sector.FINANCIAL_SERVICES, "Private Bank",    "LARGE", 1),
-    "BAJFINANCE.NS":  StockInfo("BAJFINANCE.NS",  Sector.FINANCIAL_SERVICES, "NBFC",            "LARGE", 1),
-    "BAJAJFINSV.NS":  StockInfo("BAJAJFINSV.NS",  Sector.FINANCIAL_SERVICES, "NBFC",            "LARGE", 1),
-    "SHRIRAMFIN.NS":  StockInfo("SHRIRAMFIN.NS",  Sector.FINANCIAL_SERVICES, "NBFC",            "LARGE", 1),
+    # ── FINANCIAL SERVICES (23 stocks) ───────────────────────
+    "HDFCBANK.NS":    StockInfo("HDFCBANK.NS",    Sector.FINANCIAL_SERVICES, "Private Bank",        "LARGE", 1),
+    "ICICIBANK.NS":   StockInfo("ICICIBANK.NS",   Sector.FINANCIAL_SERVICES, "Private Bank",        "LARGE", 1),
+    "KOTAKBANK.NS":   StockInfo("KOTAKBANK.NS",   Sector.FINANCIAL_SERVICES, "Private Bank",        "LARGE", 1),
+    "AXISBANK.NS":    StockInfo("AXISBANK.NS",    Sector.FINANCIAL_SERVICES, "Private Bank",        "LARGE", 1),
+    "SBIN.NS":        StockInfo("SBIN.NS",        Sector.FINANCIAL_SERVICES, "PSU Bank",            "LARGE", 1),
+    "BAJFINANCE.NS":  StockInfo("BAJFINANCE.NS",  Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 1),
+    "BAJAJFINSV.NS":  StockInfo("BAJAJFINSV.NS",  Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 1),
+    "BAJAJHLDNG.NS":  StockInfo("BAJAJHLDNG.NS",  Sector.FINANCIAL_SERVICES, "Holding Company",     "LARGE", 2),
+    "SHRIRAMFIN.NS":  StockInfo("SHRIRAMFIN.NS",  Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 1),
+    "MUTHOOTFIN.NS":  StockInfo("MUTHOOTFIN.NS",  Sector.FINANCIAL_SERVICES, "Gold Loan NBFC",      "LARGE", 2),
+    "HDFCLIFE.NS":    StockInfo("HDFCLIFE.NS",    Sector.FINANCIAL_SERVICES, "Insurance",           "LARGE", 2),
+    "SBILIFE.NS":     StockInfo("SBILIFE.NS",     Sector.FINANCIAL_SERVICES, "Insurance",           "LARGE", 2),
+    "BANKBARODA.NS":  StockInfo("BANKBARODA.NS",  Sector.FINANCIAL_SERVICES, "PSU Bank",            "LARGE", 2),
+    "CANBK.NS":       StockInfo("CANBK.NS",       Sector.FINANCIAL_SERVICES, "PSU Bank",            "LARGE", 2),
+    "PNB.NS":         StockInfo("PNB.NS",         Sector.FINANCIAL_SERVICES, "PSU Bank",            "LARGE", 2),
+    "UNIONBANK.NS":   StockInfo("UNIONBANK.NS",   Sector.FINANCIAL_SERVICES, "PSU Bank",            "LARGE", 2),
+    "CHOLAFIN.NS":    StockInfo("CHOLAFIN.NS",    Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 2),
+    "HDFCAMC.NS":     StockInfo("HDFCAMC.NS",     Sector.FINANCIAL_SERVICES, "Asset Management",    "LARGE", 2),
+    "JIOFIN.NS":      StockInfo("JIOFIN.NS",      Sector.FINANCIAL_SERVICES, "Financial Services",  "LARGE", 2),
+    "PFC.NS":         StockInfo("PFC.NS",         Sector.FINANCIAL_SERVICES, "Power Finance",       "LARGE", 2),
+    "RECLTD.NS":      StockInfo("RECLTD.NS",      Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 2),
+    "IRFC.NS":        StockInfo("IRFC.NS",        Sector.FINANCIAL_SERVICES, "Railway Finance",     "LARGE", 2),
+    "TATACAP.NS":     StockInfo("TATACAP.NS",     Sector.FINANCIAL_SERVICES, "NBFC",                "LARGE", 2),
 
-    # ── TECHNOLOGY (5 stocks — up from 3) ─────────────────────
-    "TCS.NS":         StockInfo("TCS.NS",         Sector.TECHNOLOGY,         "IT Services",     "LARGE", 1),
-    "INFY.NS":        StockInfo("INFY.NS",        Sector.TECHNOLOGY,         "IT Services",     "LARGE", 1),
-    "HCLTECH.NS":     StockInfo("HCLTECH.NS",     Sector.TECHNOLOGY,         "IT Services",     "LARGE", 1),
-    "WIPRO.NS":       StockInfo("WIPRO.NS",       Sector.TECHNOLOGY,         "IT Services",     "LARGE", 2),
-    "TECHM.NS":       StockInfo("TECHM.NS",       Sector.TECHNOLOGY,         "IT Services",     "LARGE", 2),
+    # ── TECHNOLOGY (6 stocks) ────────────────────────────────
+    "TCS.NS":         StockInfo("TCS.NS",         Sector.TECHNOLOGY,         "IT Services",         "LARGE", 1),
+    "INFY.NS":        StockInfo("INFY.NS",        Sector.TECHNOLOGY,         "IT Services",         "LARGE", 1),
+    "HCLTECH.NS":     StockInfo("HCLTECH.NS",     Sector.TECHNOLOGY,         "IT Services",         "LARGE", 1),
+    "WIPRO.NS":       StockInfo("WIPRO.NS",       Sector.TECHNOLOGY,         "IT Services",         "LARGE", 1),
+    "TECHM.NS":       StockInfo("TECHM.NS",       Sector.TECHNOLOGY,         "IT Services",         "LARGE", 2),
+    "LTM.NS":         StockInfo("LTM.NS",         Sector.TECHNOLOGY,         "IT Services",         "LARGE", 2),
 
-    # ── FMCG / CONSUMER (4 stocks — was 0) ───────────────────
-    "HINDUNILVR.NS":  StockInfo("HINDUNILVR.NS",  Sector.FMCG,               "Staples",         "LARGE", 1),
-    "ITC.NS":         StockInfo("ITC.NS",         Sector.FMCG,               "Staples/Diversified","LARGE", 1),
-    "NESTLEIND.NS":   StockInfo("NESTLEIND.NS",   Sector.FMCG,               "Food",            "LARGE", 2),
-    "TATACONSUM.NS":  StockInfo("TATACONSUM.NS",  Sector.FMCG,               "Staples",         "LARGE", 2),
+    # ── FMCG (8 stocks) ──────────────────────────────────────
+    "HINDUNILVR.NS":  StockInfo("HINDUNILVR.NS",  Sector.FMCG,               "Staples",             "LARGE", 1),
+    "ITC.NS":         StockInfo("ITC.NS",         Sector.FMCG,               "Staples/Diversified", "LARGE", 1),
+    "NESTLEIND.NS":   StockInfo("NESTLEIND.NS",   Sector.FMCG,               "Food",                "LARGE", 1),
+    "TATACONSUM.NS":  StockInfo("TATACONSUM.NS",  Sector.FMCG,               "Staples",             "LARGE", 1),
+    "BRITANNIA.NS":   StockInfo("BRITANNIA.NS",   Sector.FMCG,               "Food",                "LARGE", 2),
+    "GODREJCP.NS":    StockInfo("GODREJCP.NS",    Sector.FMCG,               "Consumer Goods",      "LARGE", 2),
+    "UNITDSPR.NS":    StockInfo("UNITDSPR.NS",    Sector.FMCG,               "Beverages",           "LARGE", 2),
+    "VBL.NS":         StockInfo("VBL.NS",         Sector.FMCG,               "Beverages",           "LARGE", 2),
 
-    # ── PHARMA (4 stocks — was 0) ────────────────────────────
-    "SUNPHARMA.NS":   StockInfo("SUNPHARMA.NS",   Sector.PHARMA,             "Large Pharma",    "LARGE", 1),
-    "DRREDDY.NS":     StockInfo("DRREDDY.NS",     Sector.PHARMA,             "Generics",        "LARGE", 1),
-    "CIPLA.NS":       StockInfo("CIPLA.NS",       Sector.PHARMA,             "Generics",        "LARGE", 2),
-    "DIVISLAB.NS":    StockInfo("DIVISLAB.NS",    Sector.PHARMA,             "CDMO",            "LARGE", 2),
+    # ── PHARMA (8 stocks) ────────────────────────────────────
+    "SUNPHARMA.NS":   StockInfo("SUNPHARMA.NS",   Sector.PHARMA,             "Large Pharma",        "LARGE", 1),
+    "DRREDDY.NS":     StockInfo("DRREDDY.NS",     Sector.PHARMA,             "Generics",            "LARGE", 1),
+    "CIPLA.NS":       StockInfo("CIPLA.NS",       Sector.PHARMA,             "Generics",            "LARGE", 1),
+    "DIVISLAB.NS":    StockInfo("DIVISLAB.NS",    Sector.PHARMA,             "CDMO",                "LARGE", 1),
+    "APOLLOHOSP.NS":  StockInfo("APOLLOHOSP.NS",  Sector.PHARMA,             "Hospitals",           "LARGE", 2),
+    "TORNTPHARM.NS":  StockInfo("TORNTPHARM.NS",  Sector.PHARMA,             "Generics",            "LARGE", 2),
+    "MAXHEALTH.NS":   StockInfo("MAXHEALTH.NS",   Sector.PHARMA,             "Hospitals",           "LARGE", 2),
+    "ZYDUSLIFE.NS":   StockInfo("ZYDUSLIFE.NS",   Sector.PHARMA,             "Generics",            "LARGE", 2),
 
-    # ── AUTO (4 stocks — includes tmpv, tmcv) ────────────────
-    "MARUTI.NS":      StockInfo("MARUTI.NS",      Sector.AUTO,               "Passenger",       "LARGE", 1),
-    "M&M.NS":         StockInfo("M&M.NS",         Sector.AUTO,               "Passenger/Utility","LARGE", 1),
-    "TMCV.NS":        StockInfo("TMCV.NS",        Sector.AUTO,               "Commercial",      "LARGE", 1),
-    "TMPV.NS":        StockInfo("TMPV.NS",        Sector.AUTO,               "Passenger",       "LARGE", 1),
+    # ── AUTO (9 stocks) ──────────────────────────────────────
+    "MARUTI.NS":      StockInfo("MARUTI.NS",      Sector.AUTO,               "Passenger",           "LARGE", 1),
+    "M&M.NS":         StockInfo("M&M.NS",         Sector.AUTO,               "Passenger/Utility",   "LARGE", 1),
+    "TMCV.NS":        StockInfo("TMCV.NS",        Sector.AUTO,               "Commercial",          "LARGE", 1),
+    "TMPV.NS":        StockInfo("TMPV.NS",        Sector.AUTO,               "Passenger",           "LARGE", 1),
+    "EICHERMOT.NS":   StockInfo("EICHERMOT.NS",   Sector.AUTO,               "Two-Wheeler",         "LARGE", 2),
+    "BAJAJ-AUTO.NS":  StockInfo("BAJAJ-AUTO.NS",  Sector.AUTO,               "Two-Wheeler",         "LARGE", 1),
+    "TVSMOTOR.NS":    StockInfo("TVSMOTOR.NS",    Sector.AUTO,               "Two-Wheeler",         "LARGE", 2),
+    "BOSCHLTD.NS":    StockInfo("BOSCHLTD.NS",    Sector.AUTO,               "Auto Components",     "LARGE", 2),
+    "MOTHERSON.NS":   StockInfo("MOTHERSON.NS",   Sector.AUTO,               "Auto Components",     "LARGE", 2),
 
-    # ── ENERGY (3 stocks — was 0 standalone) ─────────────────
-    "RELIANCE.NS":    StockInfo("RELIANCE.NS",    Sector.ENERGY,             "Oil & Gas/Conglom","LARGE", 1),
-    "ONGC.NS":        StockInfo("ONGC.NS",        Sector.ENERGY,             "Oil & Gas",       "LARGE", 2),
-    "NTPC.NS":        StockInfo("NTPC.NS",        Sector.ENERGY,             "Power",           "LARGE", 2),
+    # ── ENERGY (12 stocks) ───────────────────────────────────
+    "RELIANCE.NS":    StockInfo("RELIANCE.NS",    Sector.ENERGY,             "Oil & Gas/Conglom",   "LARGE", 1),
+    "ONGC.NS":        StockInfo("ONGC.NS",        Sector.ENERGY,             "Oil & Gas",           "LARGE", 1),
+    "NTPC.NS":        StockInfo("NTPC.NS",        Sector.ENERGY,             "Power",               "LARGE", 1),
+    "BPCL.NS":        StockInfo("BPCL.NS",        Sector.ENERGY,             "Oil & Gas",           "LARGE", 2),
+    "IOC.NS":         StockInfo("IOC.NS",         Sector.ENERGY,             "Oil & Gas",           "LARGE", 2),
+    "GAIL.NS":        StockInfo("GAIL.NS",        Sector.ENERGY,             "Oil & Gas",           "LARGE", 2),
+    "COALINDIA.NS":   StockInfo("COALINDIA.NS",   Sector.ENERGY,             "Coal Mining",         "LARGE", 2),
+    "TATAPOWER.NS":   StockInfo("TATAPOWER.NS",   Sector.ENERGY,             "Power",               "LARGE", 2),
+    "POWERGRID.NS":   StockInfo("POWERGRID.NS",   Sector.ENERGY,             "Power T&D",           "LARGE", 2),
+    "ADANIENSOL.NS":  StockInfo("ADANIENSOL.NS",  Sector.ENERGY,             "Power Distribution",  "LARGE", 2),
+    "ADANIGREEN.NS":  StockInfo("ADANIGREEN.NS",  Sector.ENERGY,             "Renewable Energy",    "LARGE", 2),
+    "ADANIPOWER.NS":  StockInfo("ADANIPOWER.NS",  Sector.ENERGY,             "Power",               "LARGE", 2),
 
-    # ── METALS (3 stocks — was 0) ────────────────────────────
-    "TATASTEEL.NS":   StockInfo("TATASTEEL.NS",   Sector.METALS,             "Steel",           "LARGE", 1),
-    "JSWSTEEL.NS":    StockInfo("JSWSTEEL.NS",    Sector.METALS,             "Steel",           "LARGE", 2),
-    "HINDALCO.NS":    StockInfo("HINDALCO.NS",    Sector.METALS,             "Aluminium/Copper","LARGE", 2),
+    # ── METALS & MINING (7 stocks) ───────────────────────────
+    "TATASTEEL.NS":   StockInfo("TATASTEEL.NS",   Sector.METALS,             "Steel",               "LARGE", 1),
+    "JSWSTEEL.NS":    StockInfo("JSWSTEEL.NS",    Sector.METALS,             "Steel",               "LARGE", 1),
+    "HINDALCO.NS":    StockInfo("HINDALCO.NS",    Sector.METALS,             "Aluminium/Copper",    "LARGE", 2),
+    "VEDL.NS":        StockInfo("VEDL.NS",        Sector.METALS,             "Zinc/Aluminium",      "LARGE", 2),
+    "HINDZINC.NS":    StockInfo("HINDZINC.NS",    Sector.METALS,             "Zinc",                "LARGE", 2),
+    "JINDALSTEL.NS":  StockInfo("JINDALSTEL.NS",  Sector.METALS,             "Steel",               "LARGE", 2),
+    "ADANIENT.NS":    StockInfo("ADANIENT.NS",    Sector.METALS,             "Mining/Conglom",      "LARGE", 2),
 
-    # ── INFRASTRUCTURE (3 stocks — was 0) ────────────────────
-    "LT.NS":          StockInfo("LT.NS",          Sector.INFRASTRUCTURE,     "EPC/Conglom",     "LARGE", 1),
-    "ADANIPORTS.NS":  StockInfo("ADANIPORTS.NS",  Sector.INFRASTRUCTURE,     "Ports",           "LARGE", 2),
-    "POWERGRID.NS":   StockInfo("POWERGRID.NS",   Sector.INFRASTRUCTURE,     "Power T&D",       "LARGE", 2),
+    # ── INFRASTRUCTURE & CONSTRUCTION (14 stocks) ─────────────
+    "LT.NS":          StockInfo("LT.NS",          Sector.INFRASTRUCTURE,     "EPC/Conglom",         "LARGE", 1),
+    "ADANIPORTS.NS":  StockInfo("ADANIPORTS.NS",  Sector.INFRASTRUCTURE,     "Ports",               "LARGE", 1),
+    "HAL.NS":         StockInfo("HAL.NS",         Sector.INFRASTRUCTURE,     "Defence/Aerospace",   "LARGE", 2),
+    "BEL.NS":         StockInfo("BEL.NS",         Sector.INFRASTRUCTURE,     "Defence Electronics", "LARGE", 2),
+    "SIEMENS.NS":     StockInfo("SIEMENS.NS",     Sector.INFRASTRUCTURE,     "Industrial/Automation","LARGE", 2),
+    "CGPOWER.NS":     StockInfo("CGPOWER.NS",     Sector.INFRASTRUCTURE,     "Power Equipment",     "LARGE", 2),
+    "CUMMINSIND.NS":  StockInfo("CUMMINSIND.NS",  Sector.INFRASTRUCTURE,     "Engines/Power",       "LARGE", 2),
+    "ABB.NS":         StockInfo("ABB.NS",         Sector.INFRASTRUCTURE,     "Industrial/Automation","LARGE", 2),
+    "ENRIN.NS":       StockInfo("ENRIN.NS",       Sector.INFRASTRUCTURE,     "Power Equipment",     "LARGE", 2),
+    "MAZDOCK.NS":     StockInfo("MAZDOCK.NS",     Sector.INFRASTRUCTURE,     "Shipbuilding",        "LARGE", 2),
+    "GRASIM.NS":      StockInfo("GRASIM.NS",      Sector.INFRASTRUCTURE,     "Cement/Chemicals",    "LARGE", 2),
+    "AMBUJACEM.NS":   StockInfo("AMBUJACEM.NS",   Sector.INFRASTRUCTURE,     "Cement",              "LARGE", 2),
+    "SHREECEM.NS":    StockInfo("SHREECEM.NS",    Sector.INFRASTRUCTURE,     "Cement",              "LARGE", 2),
+    "ULTRACEMCO.NS":  StockInfo("ULTRACEMCO.NS",  Sector.INFRASTRUCTURE,     "Cement",              "LARGE", 1),
 
-    # ── OTHER / DIVERSIFIED (3 stocks) ───────────────────────
-    "BHARTIARTL.NS":  StockInfo("BHARTIARTL.NS",  Sector.TELECOM,            "Telecom",         "LARGE", 1),
-    "TITAN.NS":       StockInfo("TITAN.NS",       Sector.CONSUMER,           "Jewelry/Lifestyle","LARGE", 1),
-    "ULTRACEMCO.NS":  StockInfo("ULTRACEMCO.NS",  Sector.CEMENT,             "Cement",          "LARGE", 2),
+    # ── CONSUMER (6 stocks) ──────────────────────────────────
+    "TITAN.NS":       StockInfo("TITAN.NS",       Sector.CONSUMER,           "Jewelry/Lifestyle",   "LARGE", 1),
+    "ASIANPAINT.NS":  StockInfo("ASIANPAINT.NS",  Sector.CONSUMER,           "Paints",              "LARGE", 2),
+    "DMART.NS":       StockInfo("DMART.NS",       Sector.CONSUMER,           "Retail",              "LARGE", 2),
+    "TRENT.NS":       StockInfo("TRENT.NS",       Sector.CONSUMER,           "Retail",              "LARGE", 2),
+    "INDHOTEL.NS":    StockInfo("INDHOTEL.NS",    Sector.CONSUMER,           "Hotels",              "LARGE", 2),
+    "ETERNAL.NS":     StockInfo("ETERNAL.NS",     Sector.CONSUMER,           "Quick Commerce",      "LARGE", 2),
 
-    # ── MOVED OUT OF CORE (were taking space) ────────────────
-    # These are now in EXTENDED list below
-    "INDUSINDBK.NS":  StockInfo("INDUSINDBK.NS",  Sector.FINANCIAL_SERVICES, "Private Bank",    "LARGE", 2),
-    "HDFCLIFE.NS":    StockInfo("HDFCLIFE.NS",    Sector.FINANCIAL_SERVICES, "Insurance",       "LARGE", 3),
-    "SBILIFE.NS":     StockInfo("SBILIFE.NS",     Sector.FINANCIAL_SERVICES, "Insurance",       "LARGE", 3),
-    "MUTHOOTFIN.NS":  StockInfo("MUTHOOTFIN.NS",  Sector.FINANCIAL_SERVICES, "Gold Loan NBFC",  "LARGE", 2),
-    "MPHASIS.NS":     StockInfo("MPHASIS.NS",     Sector.TECHNOLOGY,         "IT Services",     "MID",   2),
+    # ── TELECOM (1 stock) ────────────────────────────────────
+    "BHARTIARTL.NS":  StockInfo("BHARTIARTL.NS",  Sector.TELECOM,            "Telecom",             "LARGE", 1),
 
-    # ── EXTENDED WATCHLIST ────────────────────────────────────
-    "ADANIENT.NS":    StockInfo("ADANIENT.NS",    Sector.DIVERSIFIED,        "Conglomerate",    "LARGE", 3),
-    "ASIANPAINT.NS":  StockInfo("ASIANPAINT.NS",  Sector.CONSUMER,           "Paints",          "LARGE", 2),
-    "BRITANNIA.NS":   StockInfo("BRITANNIA.NS",   Sector.FMCG,               "Food",            "LARGE", 2),
-    "EICHERMOT.NS":   StockInfo("EICHERMOT.NS",   Sector.AUTO,               "Two-Wheeler",     "LARGE", 2),
-    "HEROMOTOCO.NS":  StockInfo("HEROMOTOCO.NS",  Sector.AUTO,               "Two-Wheeler",     "LARGE", 2),
-    "BAJAJ-AUTO.NS":  StockInfo("BAJAJ-AUTO.NS",  Sector.AUTO,               "Two-Wheeler",     "LARGE", 2),
-    "GRASIM.NS":      StockInfo("GRASIM.NS",      Sector.CEMENT,             "Cement/Chemicals","LARGE", 3),
-    "APOLLOHOSP.NS":  StockInfo("APOLLOHOSP.NS",  Sector.PHARMA,             "Hospitals",       "LARGE", 2),
-    "BPCL.NS":        StockInfo("BPCL.NS",        Sector.ENERGY,             "Oil & Gas",       "LARGE", 3),
-    "COALINDIA.NS":   StockInfo("COALINDIA.NS",   Sector.ENERGY,             "Coal Mining",     "LARGE", 3),
-    "UPL.NS":         StockInfo("UPL.NS",         Sector.DIVERSIFIED,        "Agrochemicals",   "LARGE", 3),
-    "LUPIN.NS":       StockInfo("LUPIN.NS",       Sector.PHARMA,             "Generics",        "LARGE", 3),
+    # ── CHEMICALS (2 stocks) ─────────────────────────────────
+    "PIDILITIND.NS":  StockInfo("PIDILITIND.NS",  Sector.CHEMICALS,          "Specialty Chemicals", "LARGE", 2),
+    "SOLARINDS.NS":   StockInfo("SOLARINDS.NS",   Sector.CHEMICALS,          "Explosives/Chemicals","LARGE", 2),
+
+    # ── REALTY (2 stocks) ────────────────────────────────────
+    "DLF.NS":         StockInfo("DLF.NS",         Sector.REALESTATE,         "Real Estate",         "LARGE", 2),
+    "LODHA.NS":       StockInfo("LODHA.NS",       Sector.REALESTATE,         "Real Estate",         "LARGE", 2),
+
+    # ── SERVICES (2 stocks) ──────────────────────────────────
+    "INDIGO.NS":      StockInfo("INDIGO.NS",      Sector.SERVICES,           "Airlines",            "LARGE", 2),
+    "HYUNDAI.NS":     StockInfo("HYUNDAI.NS",     Sector.AUTO,               "Passenger",           "LARGE", 2),
 }
 
 
@@ -282,38 +363,16 @@ def print_sector_distribution():
 #  LEGACY COMPATIBILITY — These lists feed into existing code
 # ============================================================
 
-# BUG FIX: Was missing comma between TMPV.NS and WIPRO.NS
-#          causing "TMPV.NSWIPRO.NS" concatenation.
-NIFTY_50_STOCKS: List[str] = get_active_stocks()
+# Nifty 50 → Priority 1 stocks from Nifty 100
+NIFTY_50_STOCKS: List[str] = get_core_stocks()
 
-# Next 50 — now maps to priority 3 extended stocks
-NIFTY_NEXT_50_STOCKS: List[str] = [
-    "DABUR.NS", "PIDILITIND.NS", "HAVELLS.NS", "GODREJCP.NS", "SIEMENS.NS",
-    "ABB.NS", "MARICO.NS", "COLPAL.NS", "BIOCON.NS", "LUPIN.NS",
-    "TRENT.NS", "ZOMATO.NS", "PAYTM.NS", "DELHIVERY.NS", "NAUKRI.NS",
-    "IRCTC.NS", "VOLTAS.NS", "BERGEPAINT.NS", "MUTHOOTFIN.NS", "MPHASIS.NS"
-]
+# Nifty Next 50 → Priority 2 stocks from Nifty 100
+NIFTY_NEXT_50_STOCKS: List[str] = [s for s, info in STOCK_UNIVERSE.items() if info.priority == 2]
 
-# UPDATED: Removed TATAMOTORS.NS (now TMPV.NS), added sector diversity
+# Quick test → 10 sector-diverse stocks for fast validation
 QUICK_TEST_STOCKS: List[str] = [
-    # Financial Services (2)
-    "HDFCBANK.NS", "ICICIBANK.NS",
-    # Technology (1)
-    "TCS.NS",
-    # FMCG (1)
-    "ITC.NS",
-    # Pharma (1)
-    "SUNPHARMA.NS",
-    # Auto (1 — your new stock)
-    "TMPV.NS",
-    # Energy (1)
-    "RELIANCE.NS",
-    # Metals (1)
-    "TATASTEEL.NS",
-    # Infrastructure (1)
-    "LT.NS",
-    # Consumer (1)
-    "BHARTIARTL.NS",
+    "HDFCBANK.NS", "TCS.NS", "ITC.NS", "SUNPHARMA.NS", "MARUTI.NS",
+    "RELIANCE.NS", "TATASTEEL.NS", "LT.NS", "BHARTIARTL.NS", "TITAN.NS",
 ]
 
 # ============================================================
