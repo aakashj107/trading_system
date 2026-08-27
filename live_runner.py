@@ -213,6 +213,8 @@ def run_cycle(
             entry_info = open_state.get(sym)
             if cur is None or not entry_info:
                 continue
+            if "entry_date" not in entry_info or "entry_price" not in entry_info:
+                continue
             try:
                 hold_days = (cycle_start.date()
                              - datetime.strptime(
@@ -245,7 +247,7 @@ def run_cycle(
         # Close out tracked entries for rule-based exits with full P&L
         for s in exits_executed:
             entry_info = pop_entry(s["symbol"])
-            if entry_info:
+            if entry_info and "entry_date" in entry_info and "entry_price" in entry_info:
                 pnl = (s["price"] - entry_info["entry_price"]) * s["quantity"]
                 pnl_pct = ((s["price"] / entry_info["entry_price"]) - 1) * 100
                 log_trade(
@@ -401,7 +403,7 @@ def run_cycle(
             matched_exit = next((x for x in exits_executed
                                  if x["symbol"] == e["symbol"]), None)
             exit_reason = matched_exit["reason"] if matched_exit else "CONSENSUS_SELL"
-            if entry_info:
+            if entry_info and "entry_date" in entry_info and "entry_price" in entry_info:
                 pnl = (e["price"] - entry_info["entry_price"]) * e["quantity"]
                 pnl_pct = ((e["price"] / entry_info["entry_price"]) - 1) * 100
                 try:
