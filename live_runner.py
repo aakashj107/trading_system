@@ -219,7 +219,7 @@ def run_cycle(
                 hold_days = (cycle_start.date()
                              - datetime.strptime(
                                  str(entry_info["entry_date"]), "%Y-%m-%d").date()).days
-            except ValueError:
+            except (ValueError, KeyError):
                 continue
             pnl_pct = (cur / float(entry_info["entry_price"]) - 1) * 100
             if hold_days >= max_hold_days and pnl_pct < min_profit_time_exit * 100:
@@ -411,7 +411,7 @@ def run_cycle(
                         datetime.strptime(str(cycle_start.date()), "%Y-%m-%d")
                         - datetime.strptime(str(entry_info["entry_date"]), "%Y-%m-%d")
                     ).days)
-                except ValueError:
+                except (ValueError, KeyError):
                     hold_days = 0
                 log_trade(
                     symbol=e["symbol"],
