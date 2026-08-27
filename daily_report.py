@@ -57,7 +57,14 @@ def main():
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE) as f:
-                open_pos = json.load(f)
+                raw = json.load(f)
+            # Normalise legacy keys (price→entry_price, qty→quantity)
+            for sym, p in raw.items():
+                if "entry_price" not in p and "price" in p:
+                    p["entry_price"] = p.pop("price")
+                if "quantity" not in p and "qty" in p:
+                    p["quantity"] = p.pop("qty")
+            open_pos = raw
         except json.JSONDecodeError:
             pass
 

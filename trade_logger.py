@@ -137,12 +137,20 @@ def log_trade(
 
 
 def load_open_positions() -> Dict:
-    """Load open-position state from disk (empty dict if missing/corrupt)."""
+    """Load open-position state from disk (empty dict if missing/corrupt).
+    Normalises legacy key names so callers always see entry_price/quantity."""
     if not os.path.exists(STATE_FILE):
         return {}
     try:
         with open(STATE_FILE) as f:
-            return json.load(f)
+            data = json.load(f)
+        for sym, p in data.items():
+            if isinstance(p, dict):
+                if "entry_price" not in p and "price" in p:
+                    p["entry_price"] = p.pop("price")
+                if "quantity" not in p and "qty" in p:
+                    p["quantity"] = p.pop("qty")
+        return data
     except (json.JSONDecodeError, OSError):
         return {}
 
