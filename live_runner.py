@@ -447,7 +447,21 @@ def run_cycle(
 
     # Persist portfolio positions so restarts/new runs remember holdings
     if portfolio is not None:
-        save_open_positions(portfolio.positions)
+        # Build proper state with entry_date/entry_price keys that
+        # load_open_positions() expects.  portfolio.positions uses
+        # different key names (price/qty) so we must translate.
+        state_to_save = {}
+        for sym, pos in portfolio.positions.items():
+            prev = open_state.get(sym, {})
+            state_to_save[sym] = {
+                "entry_price": prev.get("entry_price", pos.get("price", 0.0)),
+                "entry_date": prev.get("entry_date", str(cycle_start.date())),
+                "quantity": prev.get("quantity", pos.get("qty", 0)),
+                "stop_loss": prev.get("stop_loss", pos.get("stop_loss", 0.0)),
+                "target": prev.get("target", pos.get("target", 0.0)),
+                "strategy": prev.get("strategy", "consensus"),
+            }
+        save_open_positions(state_to_save)
 
     # ── 6. Log cycle ──────────────────────────────────────────
     cycle_end = datetime.now(IST)
