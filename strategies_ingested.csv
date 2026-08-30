@@ -1,3 +1,5 @@
 date,source,channel,rule,oos_ret,oos_pf,oos_win,oos_dd,trades,kept
 2026-08-30,RupeeCase-style cross-sectional momentum (Nifty 50 / broad),web(rupeecase.com),"rank by 12-1m return, hold top 10, monthly rebalance",9.52,1.84,50.0,0.0,40,True
 2026-08-30,The Secret Mindset - MACD money map (YouTube),youtube,"MACD>0 + bull crossover + |MACD|/Close>0.003 (distance rule), wait 2 candles",15.83,2.83,52.94,0.0,34,True
+2026-08-30,ProRealAlgos One-Candle scalping (YouTube) — DAILY ADAPTATION of opening-range concept,youtube,"opening range = 5d high/low, breakout in trend direction (SMA50); original is 15min Nasdaq intraday, NOT faithfully testable here",11.08,1.37,34.9,-3.94,146,True
+2026-08-30,Trader Chitra Support/Resistance pivots (YouTube),youtube,"Classic pivots R1/R2/S1/S2 from open+/-const; observational, no mechanical entry/exit -> NOT a standalone strategy",0.0,0.0,0.0,0.0,0,False
