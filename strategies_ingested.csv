@@ -1,0 +1,2 @@
+date,source,channel,rule,oos_ret,oos_pf,oos_win,oos_dd,trades,kept
+2026-08-30,RupeeCase-style cross-sectional momentum (Nifty 50 / broad),web(rupeecase.com),"rank by 12-1m return, hold top 10, monthly rebalance",9.52,1.84,50.0,0.0,40,True
