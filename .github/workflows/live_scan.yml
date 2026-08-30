@@ -87,8 +87,8 @@ jobs:
           for line in open('$LOG'):
               d = json.loads(line)
               print(f'  Cycle #{d[\"cycle\"]} | {d[\"status\"]}')
-              print(f'  Scanned: {d[\"symbols_scanned\"]} stocks | Signals: {d[\"raw_signals\"]} | Consensus: {d[\"consensus_signals\"]}')
-              print(f'  Buys: {d[\"buy_orders\"]} | Sells: {d[\"sell_orders\"]}')
+              print(f'  Scanned: {d.get(\"symbols_scanned\", 0)} stocks | Signals: {d.get(\"raw_signals\", 0)} | Consensus: {d.get(\"consensus_signals\", 0)}')
+              print(f'  Buys: {d.get(\"buy_orders\", 0)} | Sells: {d.get(\"sell_orders\", 0)}')
               for e in d.get('executed', []):
                   print(f'  >> {e[\"signal\"]} {e[\"symbol\"]} @ ₹{e[\"price\"]:,.2f} x {e[\"quantity\"]} ({e[\"strength\"]})')
               print()

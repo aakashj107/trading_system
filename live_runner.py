@@ -346,6 +346,11 @@ def run_cycle(
             "status": "VOL_GATE_MONITOR_ONLY",
             "cycle": state.cycle_count + 1,
             "signals_held": len(consensus),
+            # Summary-compat fields so live_scan.yml JSONL parser doesn't KeyError
+            "raw_signals": len(signals_df),
+            "consensus_signals": len(consensus),
+            "buy_orders": 0,
+            "sell_orders": 0,
         }
 
     buy_orders = 0
