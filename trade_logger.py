@@ -38,7 +38,7 @@ SIGNAL_HEADERS = [
 TRADE_HEADERS = [
     "date", "scan_time", "symbol", "action", "entry_date", "entry_price",
     "exit_date", "exit_price", "quantity", "pnl", "pnl_pct", "charges",
-    "hold_days", "exit_reason", "strategy", "regime", "cycle",
+    "hold_days", "exit_reason", "strategy", "consensus_strategies", "regime", "cycle",
 ]
 
 
@@ -107,6 +107,7 @@ def log_trade(
     charges: float = 0.0,
     hold_days: int = 0,
     exit_reason: str = "",
+    consensus_strategies: List[str] = None,
 ):
     """Log a trade to trades.csv."""
     _ensure_header(TRADES_FILE, TRADE_HEADERS)
@@ -128,6 +129,7 @@ def log_trade(
         hold_days,
         exit_reason,
         strategy,
+        " | ".join(consensus_strategies[:8]) if consensus_strategies else "",
         regime,
         cycle,
     ]

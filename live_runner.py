@@ -397,6 +397,7 @@ def run_cycle(
                 strategy="consensus",
                 regime=regime,
                 cycle=state.cycle_count + 1,
+                consensus_strategies=e.get("strategies"),
             )
         else:
             entry_info = pop_entry(e["symbol"])
@@ -428,6 +429,7 @@ def run_cycle(
                     pnl_pct=pnl_pct,
                     hold_days=hold_days,
                     exit_reason=exit_reason,
+                    consensus_strategies=e.get("strategies"),
                 )
             else:
                 # No tracked entry (e.g. state was lost) — log what we know

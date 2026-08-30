@@ -2044,7 +2044,7 @@ class ADXQualityGate:
 
 def get_all_strategies() -> list:
     """All strategies — original + bear short-selling + Phase 1 additions"""
-    return [
+    base = [
         # Original 9
         SMACrossover(20, 50),
         SMACrossover(50, 200),
@@ -2064,6 +2064,16 @@ def get_all_strategies() -> list:
         # Phase 4A: CCI PREP/READY
         CCIPrepStrategy(),
     ]
+    # Phase TV: ported TradingView strategies validated OOS in the live
+    # consensus (min_agree>=3). Wired in 2026-08 after walk-forward OOS gate.
+    # Imported lazily so a failure here can never break the core scan.
+    try:
+        from tv_indicators_backtest.strategies_tv_a import Rabiah6X, TrendStateStrategy
+        base += [Rabiah6X(), TrendStateStrategy()]
+    except Exception as _e:  # pragma: no cover
+        import logging
+        logging.getLogger("strategies").warning(f"TV strategies unavailable: {_e}")
+    return base
 
 
 def get_bear_strategies() -> list:
@@ -2092,7 +2102,18 @@ def get_regime_strategies(regime: str) -> list:
     if regime == "BEAR":
         return get_all_strategies_with_shorts()
     else:
-        return get_all_strategies()
+        # BULL/SIDEWAYS live scan: original set + validated Pine (SMC/trend) +
+        # ported TradingView strategies, all confirmed OOS in the strict
+        # walk-forward gate. Pine strategies are imported lazily so a failure
+        # here can never break the core scan.
+        strats = get_all_strategies()
+        try:
+            from strategies_pine import get_pine_strategies
+            strats = strats + get_pine_strategies()
+        except Exception as _e:  # pragma: no cover
+            import logging
+            logging.getLogger("strategies").warning(f"Pine strategies unavailable: {_e}")
+        return strats
 
 
 def get_strategy_by_name(name: str) -> Optional[Strategy]:
