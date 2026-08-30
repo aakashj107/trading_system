@@ -6,3 +6,5 @@ date,source,channel,rule,oos_ret,oos_pf,oos_win,oos_dd,trades,kept
 2026-08-30,RR Supertrend+Pivot swing strategy (YouTube),youtube,Supertrend green + Close crosses above R1 (or Pivot); daily Nifty; author 10% tgt/5% sl,12.26,18.35,80.0,0.0,5,False
 2026-08-30,Lewis Kelly - Ultimate Daily Bias (YouTube),youtube,SMC/price-action: predict next daily candle from wick direction + fair value gaps; no quantifiable thresholds,0.0,0.0,0.0,0.0,0,False
 2026-08-30,Zerodha - How to Backtest a Strategy (YouTube),youtube,Educational tutorial (TradingView+Claude+Pine); not a specific strategy,0.0,0.0,0.0,0.0,0,False
+2026-08-30,Pullback-to-50SMA strategy (YouTube),youtube,uptrend(>50&200 SMA)+pullback tag 50SMA+reversal candle; daily,18.5,40.55,83.3,0.0,6,False
+2026-08-30,The 50 EMA Strategy (YouTube),youtube,Motivational only: set 50 EMA watch bounce; no mechanical rule,0.0,0.0,0.0,0.0,0,False
