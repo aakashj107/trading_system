@@ -15,13 +15,8 @@ jobs:
           python-version: '3.11'
       - run: pip install yfinance pandas numpy requests
       - run: python daily_run.py
-        env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT:  ${{ secrets.TG_CHAT }}
       - name: Save updated logs
         run: |
-          git config user.name "paper-bot"
-          git config user.email "bot@users.noreply.github.com"
           git add signals_log.csv paper_trades.csv
           git diff --cached --quiet || git commit -m "daily run $(date -u +%F)"
           git push
