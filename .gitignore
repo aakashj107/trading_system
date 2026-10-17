@@ -17,9 +17,7 @@ paper_trading_logs/
 reports/
 daily_logs/
 
-# Trade logs (runtime state, uploaded as CI artifacts)
-trade_logs/
-live_state/
+# Trade logs are committed (audit trail) - see workflows
 token_cache.json
 
 # NSE holiday calendar (local, optional — see live_scheduler.py)

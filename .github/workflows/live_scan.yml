@@ -136,6 +136,20 @@ jobs:
           echo ""
           echo "--- Report also saved as artifact (daily_report.md) ---"
 
+      - name: Save trade records to repo
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p trade_logs daily_logs live_state
+          git add trade_logs/ daily_logs/ live_state/ 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "live scan records $(date -u +%Y-%m-%dT%H:%M)Z" || true
+            git push || echo "push failed (non-fatal; records remain in this run's artifact)"
+          else
+            echo "No new trade records this run."
+          fi
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
