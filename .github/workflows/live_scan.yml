@@ -2,8 +2,9 @@ name: Paper Trading Scan
 
 on:
   schedule:
-    - cron: '*/15 3-9 * * 1-5'   # Every 15 min during IST 8:30-15:29
-    - cron: '0 10 * * 1-5'       # Daily summary at IST 15:30
+    # Single EOD run after market close (IST 15:45) - complete daily bars,
+    # reliable on GitHub Actions (avoids 15-min throttling/delays).
+    - cron: '15 10 * * 1-5'      # 15:45 IST Mon-Fri (EOD consensus scan)
   workflow_dispatch:
 
 jobs:
