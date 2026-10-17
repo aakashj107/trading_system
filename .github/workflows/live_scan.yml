@@ -63,8 +63,25 @@ jobs:
               print('No token cache found — will resolve via searchScrip')
           "
 
+      - name: Detect market regime
+        id: regime
+        run: |
+          REGIME=$(python3 -c "
+          try:
+              from data_fetcher import YFinanceDataFetcher
+              from regime_detector import RegimeDetector
+              f = YFinanceDataFetcher(cache_dir='data_cache')
+              df = f.get_nifty_index(period='1y')
+              r = RegimeDetector().detect(df) if (df is not None and not df.empty) else {}
+              print(r.get('regime','BULL'))
+          except Exception as e:
+              print('BULL')
+          ")
+          echo "regime=$REGIME" >> $GITHUB_OUTPUT
+          echo "Detected regime: $REGIME"
+
       - name: Run paper trading scan
-        run: python live_runner.py --universe core --regime BULL
+        run: python live_runner.py --universe core --regime ${{ steps.regime.outputs.regime }}
         env:
           ANGEL_API_KEY: ${{ secrets.ANGEL_API_KEY }}
           ANGEL_CLIENT_CODE: ${{ secrets.ANGEL_CLIENT_CODE }}
