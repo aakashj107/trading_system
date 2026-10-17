@@ -68,11 +68,14 @@ jobs:
         id: regime
         run: |
           REGIME=$(python3 -c "
+          import contextlib, io
+          buf = io.StringIO()
           try:
-              from data_fetcher import YFinanceDataFetcher
-              from regime_detector import RegimeDetector
-              f = YFinanceDataFetcher(cache_dir='data_cache')
-              df = f.get_nifty_index(period='1y')
+              with contextlib.redirect_stdout(buf):
+                  from data_fetcher import YFinanceDataFetcher
+                  from regime_detector import RegimeDetector
+                  f = YFinanceDataFetcher(cache_dir='data_cache')
+                  df = f.get_nifty_index(period='1y')
               r = RegimeDetector().detect(df) if (df is not None and not df.empty) else {}
               print(r.get('regime','BULL'))
           except Exception as e:
