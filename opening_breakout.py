@@ -38,12 +38,16 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 CAPITAL = 100000.0
 RISK_PER_TRADE = 0.01
 MAX_TRADES_PER_DAY = 3
-MAX_HOLD_BARS = 3
-ENTRY_CUTOFF_HOUR = 14
-ENTRY_CUTOFF_MINUTE = 0
+MAX_HOLD_BARS = 9
+ENTRY_CUTOFF_HOUR = 10
+ENTRY_CUTOFF_MINUTE = 30
 SLIPPAGE_PCT = 0.0005
 COST_PCT_RT = 0.0025
-MIN_STOP_PCT = 0.001
+MIN_STOP_PCT = 0.003
+# Opening-range quality filters
+MIN_OR_PCT = 0.5
+MAX_OR_PCT = 3.0
+TARGET_R_MULT = 2.0
 TRADES_CSV = "./opening_breakout_trades.csv"
 
 UNIVERSE = [
@@ -151,9 +155,16 @@ def opening_range(day_df):
     # bars from 09:15 up to (not including) 09:30
     or_bars = day_df[(day_df.index.time >= pd.Timestamp("09:15").time()) &
                      (day_df.index.time < pd.Timestamp("09:30").time())]
-    if or_bars.empty:
+    if or_bars.empty or len(or_bars) < 2:
         return None, None
-    return float(or_bars["High"].max()), float(or_bars["Low"].min())
+    hi = float(or_bars["High"].max())
+    lo = float(or_bars["Low"].min())
+    if hi <= 0:
+        return None, None
+    pct = (hi - lo) / hi * 100.0
+    if pct < MIN_OR_PCT or pct > MAX_OR_PCT:
+        return None, None
+    return hi, lo
 
 
 # ============================================================
@@ -163,25 +174,35 @@ def find_breakout(symbol, day_df):
     or_high, or_low = opening_range(day_df)
     if or_high is None:
         return None
-    # bars after 09:30, before cutoff
+    or_range = or_high - or_low
+    # average volume of opening-range bars (liquidity baseline)
+    or_bars = day_df[(day_df.index.time >= pd.Timestamp("09:15").time()) &
+                     (day_df.index.time < pd.Timestamp("09:30").time())]
+    avg_vol = float(or_bars["Volume"].mean()) if "Volume" in or_bars else 0.0
+
     cutoff = pd.Timestamp(day_df.index.date[0]).replace(
         hour=ENTRY_CUTOFF_HOUR, minute=ENTRY_CUTOFF_MINUTE)
     post = day_df[(day_df.index.time >= pd.Timestamp("09:30").time()) &
                   (day_df.index < cutoff)]
     for ts, row in post.iterrows():
-        if row["High"] > or_high:
+        o = float(row["Open"]); h = float(row["High"]); l = float(row["Low"]); c = float(row["Close"])
+        vol = float(row["Volume"]) if "Volume" in row else 0.0
+        body = abs(c - o)
+        # volume confirmation
+        vol_ok = (avg_vol <= 0) or (vol >= 1.2 * avg_vol)
+        # LONG breakout: close above range high, not just a wick
+        if c > or_high and vol_ok and body >= 0.2 * or_range:
             return {
                 "symbol": symbol, "direction": "LONG",
                 "breakout_time": ts, "or_high": or_high, "or_low": or_low,
-                "bo_open": float(row["Open"]), "bo_high": float(row["High"]),
-                "bo_low": float(row["Low"]), "bo_close": float(row["Close"]),
+                "bo_open": o, "bo_high": h, "bo_low": l, "bo_close": c,
             }
-        if row["Low"] < or_low:
+        # SHORT breakout: close below range low
+        if c < or_low and vol_ok and body >= 0.2 * or_range:
             return {
                 "symbol": symbol, "direction": "SHORT",
                 "breakout_time": ts, "or_high": or_high, "or_low": or_low,
-                "bo_open": float(row["Open"]), "bo_high": float(row["High"]),
-                "bo_low": float(row["Low"]), "bo_close": float(row["Close"]),
+                "bo_open": o, "bo_high": h, "bo_low": l, "bo_close": c,
             }
     return None
 
@@ -195,11 +216,12 @@ def execute_trade(candidate, day_df):
     entry_price_raw = candidate["bo_close"]
     if direction == "LONG":
         entry = round(entry_price_raw * (1 + SLIPPAGE_PCT), 2)
-        stop = round(candidate["bo_low"], 2)
+        # stop below the opening-range low (wider, less noise-driven)
+        stop = round(candidate["or_low"], 2)
         risk_per_share = entry - stop
     else:
         entry = round(entry_price_raw * (1 - SLIPPAGE_PCT), 2)
-        stop = round(candidate["bo_high"], 2)
+        stop = round(candidate["or_high"], 2)
         risk_per_share = stop - entry
 
     if risk_per_share <= 0:
@@ -222,6 +244,7 @@ def execute_trade(candidate, day_df):
     capital_used = round(entry * qty, 2)
 
     # walk forward up to MAX_HOLD_BARS from the bar after breakout
+    target = (entry + TARGET_R_MULT * risk_per_share) if direction == "LONG" else (entry - TARGET_R_MULT * risk_per_share)
     future = day_df[day_df.index > bo_time].head(MAX_HOLD_BARS)
     exit_time = None
     exit_price = None
@@ -239,6 +262,11 @@ def execute_trade(candidate, day_df):
                 exit_price = round(min(float(row["Open"]), stop), 2)
                 exit_reason = "STOPLOSS"
                 break
+            if float(row["High"]) >= target:
+                exit_time = ts
+                exit_price = round(target, 2)
+                exit_reason = "TARGET"
+                break
         else:
             mfe = max(mfe, entry - float(row["Low"]))
             mae = max(mae, float(row["High"]) - entry)
@@ -246,6 +274,11 @@ def execute_trade(candidate, day_df):
                 exit_time = ts
                 exit_price = round(max(float(row["Open"]), stop), 2)
                 exit_reason = "STOPLOSS"
+                break
+            if float(row["Low"]) <= target:
+                exit_time = ts
+                exit_price = round(target, 2)
+                exit_reason = "TARGET"
                 break
         if i >= MAX_HOLD_BARS:
             exit_time = ts
@@ -330,11 +363,15 @@ def main():
     ist = now_ist()
     print("=============== ORB PAPER RUN @ {} IST ===============".format(ist.strftime("%Y-%m-%d %H:%M")))
 
-    # load existing trades
+    # load existing trades and de-duplicate
     if os.path.exists(TRADES_CSV) and os.path.getsize(TRADES_CSV) > 0:
         trades_df = pd.read_csv(TRADES_CSV)
+        if "Trade_ID" in trades_df.columns:
+            trades_df = trades_df.drop_duplicates(subset="Trade_ID", keep="last")
     else:
         trades_df = pd.DataFrame(columns=TRADE_COLS)
+
+    existing_ids = set(trades_df["Trade_ID"].astype(str)) if "Trade_ID" in trades_df.columns else set()
 
     # avoid duplicate day
     today_str = ist.strftime("%Y-%m-%d")
@@ -359,8 +396,9 @@ def main():
     new_rows = []
     for cand, day in selected:
         row = execute_trade(cand, day)
-        if row is not None:
+        if row is not None and str(row["Trade_ID"]) not in existing_ids:
             new_rows.append(row)
+            existing_ids.add(str(row["Trade_ID"]))
             print("TRADE: {} {} @ {} SL {} Qty {}".format(
                 row["Direction"], row["Symbol"], row["Entry_Price"],
                 row["SL"], row["Qty"]))
@@ -368,12 +406,17 @@ def main():
     if new_rows:
         new_df = pd.DataFrame(new_rows, columns=TRADE_COLS)
         trades_df = pd.concat([trades_df, new_df], ignore_index=True)
-        print("\n>> {} new trade(s)".format(len(new_rows)))
+        tot = sum(r["PnL_Rs"] for r in new_rows)
+        wins = sum(1 for r in new_rows if r["PnL_Rs"] > 0)
+        print("\n>> {} new trade(s) | wins {} | day PnL Rs {:.2f}".format(
+            len(new_rows), wins, tot))
     else:
         print("\n>> No new trades today.")
 
+    if "Trade_ID" in trades_df.columns:
+        trades_df = trades_df.drop_duplicates(subset="Trade_ID", keep="last")
     trades_df.to_csv(TRADES_CSV, index=False)
-    print("Saved -> {}".format(TRADES_CSV))
+    print("Saved -> {} ({} total rows)".format(TRADES_CSV, len(trades_df)))
 
     telegram("ORB run {}: {} new trade(s)".format(today_str, len(new_rows)))
 

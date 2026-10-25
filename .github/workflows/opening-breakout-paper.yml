@@ -33,6 +33,24 @@ jobs:
 
       - name: Save updated logs
         run: |
+          python3 - <<'PY'
+          import pandas as pd, os
+          p = "opening_breakout_trades.csv"
+          if os.path.exists(p) and os.path.getsize(p) > 0:
+              d = pd.read_csv(p)
+              if "Trade_ID" in d.columns:
+                  before = len(d)
+                  d = d.drop_duplicates(subset="Trade_ID", keep="last")
+                  d.to_csv(p, index=False)
+                  print(f"Deduped: {before} -> {len(d)} rows")
+          # summary of last run's new trades
+          if os.path.exists(p) and os.path.getsize(p) > 0:
+              d = pd.read_csv(p)
+              print("Total trades in file:", len(d))
+              if "PnL_Rs" in d.columns:
+                  print("Cumulative PnL Rs:", round(d["PnL_Rs"].sum(), 2))
+                  print("Win rate %:", round((d["PnL_Rs"] > 0).mean() * 100, 1))
+          PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add opening_breakout_trades.csv

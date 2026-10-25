@@ -8,3 +8,4 @@ date,source,channel,rule,oos_ret,oos_pf,oos_win,oos_dd,trades,kept
 2026-08-30,Zerodha - How to Backtest a Strategy (YouTube),youtube,Educational tutorial (TradingView+Claude+Pine); not a specific strategy,0.0,0.0,0.0,0.0,0,False
 2026-08-30,Pullback-to-50SMA strategy (YouTube),youtube,uptrend(>50&200 SMA)+pullback tag 50SMA+reversal candle; daily,18.5,40.55,83.3,0.0,6,False
 2026-08-30,The 50 EMA Strategy (YouTube),youtube,Motivational only: set 50 EMA watch bounce; no mechanical rule,0.0,0.0,0.0,0.0,0,False
+2026-10-17,"X post @apoorvsinghasr 10/21 EMA + Supertrend (10,3)",X/Twitter (via fxtwitter),"10/21 EMA trend + Supertrend(10,3) context; entries on EMA cross/reclaim/pivot breakout; exits on 2 closes below 21 EMA or bearish cross+lower high or ST red",2.62,1.05,30.1,-7.94,282,True
